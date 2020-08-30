@@ -1,0 +1,914 @@
+---
+title: "Medellin neighborhood clustering given accidents analytics"
+author:
+  - name: "Alejandro Cadavid Romero"
+    email: alcadavidro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+  - name: "Santiago Vasquez Rodriguez"
+    email: svasquezro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introducción
+
+Este documento hace parte del trabajo del curso de **Analítica Predictiva** de la Universidad Nacional de Colombia para la Maestría en Ingeniería y Especialización en Analítica. El alcance de este es la agrupación de los barrios de Medellín de acuerdo a su accidentalidad, para esto, se llevara a cabo un análisis exploratorio a nivel de barrios para determinar las variables que mejor se pueden ajustar a un algoritmo de agrupación o clustering. Como resultado, se presentaran los grupos en un mapa y se discutiran las características espaciales de dichos grupos.  
+
+### Carga de librerias
+```{r loading-libraries}
+# Manipulación de datos
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(na.tools)
+library(factoextra)
+library(clustertend)
+
+# Análisis geoespacial
+library(geosphere)
+library(leaflet)
+
+# Visualización
+library(ggplot2)
+
+# Formato tablas
+library(kableExtra)
+```
+
+
+### Carga de datos y vistazo inicial  
+```{r loading-data}
+df <- rbind(
+  read.csv('../../data/processed/train_data.csv'), 
+  read.csv('../../data/processed/test_data.csv')
+  )
+kable(head(df)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+### Vista de los tipos de los datos y características inicales  
+```{r looking data types}
+str(df)
+```
+
+### Transformación de tipos de datos
+
+Inicialmente, se transforman los datos de tipo fecha, ya que son una gran fuente de información al momento de crear nuevas variables, como estadísticos agregados de las clases de accidentes y extracción de características espaciales.
+```{r dates transformation}
+df <- df %>% 
+  mutate(
+    FECHA=lubridate::as_datetime(FECHA)
+    ) %>%
+  mutate(
+    SEMANA=lubridate::week(FECHA),
+    HORA=lubridate::hour(FECHA)
+  )
+```  
+
+Del análisis exploratorio de datos hecho en [Exploratory-Data-Analysis](https://www.google.com), se evidencia que la mayoría de los registros de colisiones, no se tienen datos del barrio.  
+
+```{r neighborhood exploration}
+df %>%
+  group_by(BARRIO) %>% 
+  summarise(
+    Frecuencia=n(),
+    prop=round(n()/nrow(df), 3),
+    .groups="drop") %>%
+  arrange(desc(Frecuencia), .by_group=T) %>%
+  top_n(10) %>%
+  kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```  
+Como se puede observar, 19766 observaciones, que corresponden a casi un 10% de los datos, no tienen **barrio** asociado. Siendo una cantidad imporante de los datos, se va a proceder a realizar una imputación por distancia acorde a la latitud y longitud de esos registros vs los centroides de estás dos variables de los registros que si poseen información. Antes de proceder, se valida la completitud de las columnas de latitud y longitud de los datos.  
+
+```{r lat-lng analysis}
+rbind(df %>%
+        dplyr::select(LATITUD, LONGITUD) %>%
+        summarise(
+          na_values=sum(is.na(LATITUD)),
+          avg=round(mean(LATITUD),5),
+          std=round(sd(LATITUD),5),
+          min_value=round(min(LATITUD),5),
+          max_value=round(max(LATITUD),5),
+          .groups="drop"
+          ),
+      df %>%
+        dplyr::select(LATITUD, LONGITUD) %>%
+        summarise(
+          na_values=sum(is.na(LONGITUD)),
+          avg=round(mean(LONGITUD),5),
+          std=round(sd(LONGITUD),5),
+          min_value=round(min(LONGITUD),5),
+          max_value=round(max(LONGITUD),5),
+          .groups="drop"
+          )
+    ) %>%
+  t() %>% data.frame() %>%
+  rename(LATITUD=X1, LONGITUD=X2) %>%
+  kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```  
+
+### Centroides de los barrios conocidos
+Como se puede observar, no hay valores extremos o atípicos dentro de la longitud y latitud, al igual que no hay valores nulos por lo que se puede proceder con la estrategia planteada de extraer el centroide de cada barrio de acuerdo a los accidentes, e imputar los valores de los barrios de acuerdo a la cercania del registro del accidente con los centroides de los barrios. Para esto, se usara la distancia de harvesine entre dos puntos.  
+
+```{r centroids calculation}
+centroides_barrios <- df %>% 
+  dplyr::select(BARRIO, LATITUD, LONGITUD) %>%
+  filter(!(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086"))) %>%
+  group_by(BARRIO) %>%
+  summarise(
+    n_accidentes=n(),
+    lng=median(LONGITUD),
+    lat=median(LATITUD),
+    .groups="drop_last"
+    ) %>%
+  arrange(desc(n_accidentes))
+
+centroides_barrios %>% top_n(15, n_accidentes) %>% kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```  
+Vamos a visualizar los centroides de los barrios de acuerdo a los registros de los accidentes.. 
+
+```{r Visualización de los centroides}
+centroides_barrios %>% 
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(
+    clusterOptions = markerClusterOptions(),
+  ) %>% 
+  setView(lng = mean(centroides_barrios$lng), lat = mean(centroides_barrios$lat), zoom = 11)
+  
+```  
+
+Lo primero que se observa en los centroides de los barrios, es que hay 3 barrios, específicamente los cercanos a san feliz y otros hacia el oriente del área metropolitana que se encuentran muy lejos de la densidad de accidentes. Por otro lado hay otros 14 barrios cercanos a San Antonio de Prado, lo cual ya se encuentra cerca del borde del área metropolitana, con lo cual nos cuestina si es necesario incluir estos barrios.  
+
+Ahora teniendo la tabla de referencia de la latitud y la longitud para los barrios conocidos, se usa la fórmula del semiverseno para calcular la distancia espacial entre los centroides de los barrios conocidos y las coordenadas de los registros que no se tiene un barrio. Una vez computada estás distancias, se toma las coordenadas con menor distancia y se asigna ese barrio.  
+
+```{r imputación de barrios}
+asignacion_barrios <- function(df_barrios, centroides_referencia){
+  barrios <- c()
+  for (i in 1:nrow(df_barrios)){
+    idx <- which.min(distHaversine(
+      p1 = df_barrios[i, ],
+      p2 = centroides_referencia[,c(3, 4)])
+      )
+    barrio <- centroides_referencia[idx, 1] %>% unlist(., use.names = F)
+    barrios[i] <- barrio
+  }
+  return(barrios)
+}
+
+df_con_barrio <- df %>%
+  filter(!(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086")))
+
+df_sin_barrio <- df %>%
+  filter(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086"))
+
+df_lng_lat <- df_sin_barrio %>%
+  dplyr::select(LONGITUD, LATITUD)
+
+
+centroides_barrios <- as.data.frame(centroides_barrios)
+df_lng_lat <- as.data.frame(df_lng_lat)
+
+barrios <- asignacion_barrios(df_barrios = df_lng_lat, centroides_referencia = centroides_barrios)
+
+df_sin_barrio$BARRIO <- barrios
+
+# df <- rbind(df_sin_barrio, df_con_barrio)
+
+```
+
+```{r barrios}
+df_sin_barrio %>%
+  group_by(BARRIO) %>% 
+  summarise(
+    n_records=n(),
+    proportion=(n()  / nrow(df_sin_barrio))*100,
+    .groups="drop_last"
+  ) %>% 
+  arrange(desc(n_records)) %>%
+  top_n(10) %>% kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```  
+La mayoria de las asignaciones corresponde al barrio **la oculta** (aproximadamente el 97%), el cual es un barrio de **San Antonio de Prado**. Sin embargo, sería interesante revisar cual es la ubicación promedio de estos registros que se les acaba de imputar el barrio.
+
+```{r barrios-map-viz}
+coordinates <- df_sin_barrio %>%
+  summarise(
+    mean_lat=mean(LATITUD),
+    mean_lng=mean(LONGITUD),
+    max_lat=max(LATITUD),
+    max_lng=max(LONGITUD),
+    min_lat=min(LATITUD),
+    min_lng=min(LONGITUD)
+  )
+
+leaflet() %>%
+  setView(lng = mean(df_con_barrio$LONGITUD), lat = mean(df_con_barrio$LATITUD), zoom= 11) %>%
+  addMarkers(
+    lng = coordinates$mean_lng,
+    lat = coordinates$mean_lat, 
+    label = "Media lat-lng de registros sin barrio", 
+    labelOptions = labelOptions(noHide = T, direction = "bottom", textOnly = T, style = list("font-size" = "13px", "font-weight" = "bold"))
+    ) %>%
+  addTiles()
+```  
+Como se puede ver, el promedio de la latitudy la longitud es a las afueras de medellín, a las afueras de san antonio de prado, por esto, aproximadamente el 97% de la imputación de los datos, se hace con el barrio **la oculta**. Por calidad del análisis está imputación está altamente sesgada por la zona de los accidentes, lo cual consideramos innecesario proceder con los barrios imputados con la oculta, con lo que se va a proceder a dejar la imputación para el 3% restante
+
+```{r imputación concluyente barrios}
+df <- rbind(
+  df_con_barrio, 
+  rbind(df_sin_barrio %>% 
+          filter(BARRIO=="la oculta") %>% 
+          mutate(BARRIO=""),
+        df_sin_barrio %>% 
+          filter(BARRIO!="la oculta")
+  )
+)
+```
+
+### Centroides de las comunas conocidas  
+
+Después del [análisis exploratorio de datos](https://www.google.com), se evidenció que el problema de los barrios se extiende de igual forma a las comunas, pero viendo el mapa anterior donde el promedio de estos registros se encuentran en las afueras del área metropolitana, no es de extrañarse que estos faltantes o registros nulos se refieran al mismo caso. Sin embargo, hubo un porcentaje pequeño que si podía registrarse en el área, como fue el caso del 1.2% del subconjunto de datos (registros sin barrio). Volvemos a repetir los mismos pasos anteriores para hacer imputación, sin embargo, antes vamos a visualizar el promedio de la latitud y longitud y ubicarlo en un mapa.
+
+```{r comunas top 10 - bottom 10}
+rbind(df %>%
+        group_by(COMUNA) %>%
+        summarise(
+          n_values = n(),
+          .groups = "drop"
+        ) %>%
+        arrange(n_values) %>% top_n(5),
+      df %>%
+        group_by(COMUNA) %>%
+        summarise(
+          n_values = n(),
+          .groups = "drop"
+        ) %>% 
+        arrange(n_values) %>% slice(1:5)) %>%
+  kable() %>% kable_styling(bootstrap_options = "striped", position = "left") 
+```  
+
+```{r comunas-map-viz}
+coordinates <- df %>%
+  filter(COMUNA == "") %>% 
+  summarise(
+    mean_lat=mean(LATITUD),
+    mean_lng=mean(LONGITUD),
+    max_lat=max(LATITUD),
+    max_lng=max(LONGITUD),
+    min_lat=min(LATITUD),
+    min_lng=min(LONGITUD)
+  )
+
+leaflet() %>%
+  setView(lng = mean(df_con_barrio$LONGITUD), lat = mean(df_con_barrio$LATITUD), zoom= 11) %>%
+  addMarkers(
+    lng = coordinates$mean_lng,
+    lat = coordinates$mean_lat, 
+    label = "Media lat-lng de registros sin comuna", 
+    labelOptions = labelOptions(noHide = T, direction = "bottom", textOnly = T, style = list("font-size" = "13px", "font-weight" = "bold"))
+    ) %>%
+  addTiles()
+```  
+
+Se evidencia la falta de comuna para estos registros y que el centroide de lat-lng es el mismo, debido a que la clusterización se va hacer a nivel de barrio, se va dejar este campo vacio para los registros que no se tienen datos
+
+
+## Clustering de barrios de acuerdo a la accidentalidad  
+
+Antes de proceder a realizar el agrupamiento de los barrios en función de la accidentalidad, se debe hacer una exploración rápida de los accidentes en función del tiempo, para validar si el agrupamiento se debe hacer también en función del tiempo, como el año, o sobre todo el conjunto de datos sin discriminar el tiempo.  
+
+```{r Análisis por año}
+df %>%
+  group_by(PERIODO) %>%
+  summarise(
+    n_accidentes=n(),
+    .groups="drop"
+  ) %>%
+  ggplot() +
+  geom_bar(aes(x=PERIODO, y=n_accidentes), stat = "identity") +
+  labs(x="Año", y ="Número de accidentes") +
+  ggtitle("Accidentes por año") +
+  geom_text(aes(x=PERIODO, y=n_accidentes,label = n_accidentes), vjust=-0.3, size=3.5) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5))
+  
+```
+
+Como se ve en el anterior gráfico, el número de accidentes por año es muy *estable* a lo largo de los 5 años del análisis.  
+
+```{r Análisis por año y mes}
+df %>%
+  mutate(MES_COD=month(MES)) %>%
+  group_by(PERIODO, MES_COD) %>%
+  summarise(
+    n_accidentes=n(),
+    .groups="drop"
+  ) %>%
+  ggplot() +
+  geom_line(aes(x=MES_COD, y=n_accidentes, colour=factor(PERIODO))) + 
+  scale_x_discrete(name ="Mes", limits=factor(1:12)) +
+  labs(colour="Año", y="Número accidentes", title="Número de accidentes por año y mes") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Del análisis de tiempo, se pueden ver algunos patrones por meses, pero por año no se ve ninguna diferenciación a nivel general del conjunto de datos, aunque por meses se pueden ver unos leves patrones de cambios. Ahora vamos a analizar por semana del año, día del mes, de la semana y hora del dia.  
+
+```{r Análisis por semana del año, fig.width=10}
+df %>%
+  group_by(PERIODO, SEMANA) %>%
+  summarise(
+    n_accidentes=n(),
+    .groups="drop"
+  ) %>%
+  group_by(SEMANA) %>%
+  summarise(
+    accidentes=sum(n_accidentes),
+    promedio_accidentes=mean(n_accidentes, na.rm = T),
+    sd_accidentes=sd(n_accidentes, na.rm = T),
+    .groups="drop"
+  ) %>% 
+  ggplot(aes(x=SEMANA, y=promedio_accidentes)) +
+  geom_line() +
+  geom_point()+
+  geom_errorbar(aes(ymin=promedio_accidentes-sd_accidentes, ymax=promedio_accidentes+sd_accidentes), width=.2,
+                 position=position_dodge(0.05)) +
+  scale_x_discrete(name ="Semana del año", limits=factor(1:53)) +
+  theme_classic() + labs(y="Promedio de accidentes") +
+  ggtitle("Promedio de accidentes por semana del año") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r Análisis por dia del mes, fig.width=10}
+df %>%
+  mutate(DIA_MES=day(FECHA)) %>%
+  group_by(PERIODO, DIA_MES) %>%
+  summarise(
+    n_accidentes=n(),
+    .groups="drop"
+  ) %>%
+  group_by(DIA_MES) %>%
+  summarise(
+    accidentes=sum(n_accidentes),
+    promedio_accidentes=mean(n_accidentes, na.rm = T),
+    sd_accidentes=sd(n_accidentes, na.rm = T),
+    .groups="drop"
+  ) %>% 
+  ggplot(aes(x=DIA_MES, y=promedio_accidentes)) +
+  geom_line() +
+  geom_point()+
+  geom_errorbar(aes(ymin=promedio_accidentes-sd_accidentes, ymax=promedio_accidentes+sd_accidentes), width=.2,
+                 position=position_dodge(0.05)) +
+  scale_x_discrete(name ="Día del mes", limits=factor(1:31)) +
+  theme_classic() + labs(y="Promedio de accidentes") +
+  ggtitle("Promedio de accidentes por día del mes") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r Análisis por hora del dia, fig.width=10}
+df %>%
+  group_by(PERIODO, HORA) %>%
+  summarise(
+    n_accidentes=n(),
+    .groups="drop"
+  ) %>%
+  group_by(HORA) %>%
+  summarise(
+    accidentes=sum(n_accidentes),
+    promedio_accidentes=mean(n_accidentes, na.rm = T),
+    sd_accidentes=sd(n_accidentes, na.rm = T),
+    .groups="drop"
+  ) %>% 
+  ggplot(aes(x=HORA, y=promedio_accidentes)) +
+  geom_line() +
+  geom_point()+
+  geom_errorbar(aes(ymin=promedio_accidentes-sd_accidentes, ymax=promedio_accidentes+sd_accidentes), width=.2,
+                 position=position_dodge(0.05)) +
+  scale_x_discrete(name ="Hora del día", limits=factor(1:24)) +
+  theme_classic() + labs(y="Promedio de accidentes") +
+  ggtitle("Promedio de accidentes por hora del día") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r Análisis por hora del dia y mes, fig.width=10}
+df %>%
+  group_by(PERIODO, HORA) %>%
+  summarise(
+    n_accidentes=n(),
+    .groups="drop"
+  ) %>% 
+  ggplot(aes(PERIODO, HORA, fill= n_accidentes)) +
+  geom_tile()
+```
+
+Se ve un cambio importante en el patrón de accidentes en el año **2015**, el cual por la leyenda de colores, se invierte el comportamiento de los accidentes en la tarde y la mañana, donde se evidenció que a nivel general, se dieron más accidentes en la mañana que en la tarde, veamoslo a nivel de serie.  
+
+```{r Análisis por hora y año}
+df %>%
+  group_by(PERIODO, HORA) %>%
+  summarise(
+    n_accidentes=n(),
+    .groups="drop"
+  ) %>% 
+  ggplot() +
+  geom_line(aes(x=HORA, y=n_accidentes, colour=factor(PERIODO))) + 
+  scale_x_discrete(name ="Hora del día", limits=factor(1:24)) +
+  labs(colour="Hora", y="Número accidentes", title="Número de accidentes por año y hora") +
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+La difrenciación del 2015 respecto al resto de los años amerita hacer una clusterización específica a ver si se encuentran características diferenciadoras respecto a los demás años, el cual se hará máas adelante.  
+
+
+Vale la pena hacer una diferenciación por año y barrio para evaluar si hay cambios de los niveles de accidentalidad por año, para esto, la próxima tabla presenta el total de accidentes rankeados de forma descendente por año, es decir, el *#1* se refiere al barrio con mayor accidentalidad en un año específico.  
+
+```{r Análisis de los barrios por año}
+df %>%
+  filter(BARRIO != "") %>% 
+  group_by(BARRIO, PERIODO) %>% 
+  summarise(
+    total_accidentes = n(),
+    .groups="drop"
+  ) %>%
+  mutate(PERIODO=paste0("periodo_", PERIODO)) %>%
+  pivot_wider(names_from = PERIODO, values_from=total_accidentes) %>%
+  mutate(
+    periodo_2014=rank(desc(periodo_2014), na.last = T, ties.method = "min"),
+    periodo_2015=rank(desc(periodo_2015), na.last = T, ties.method = "min"),
+    periodo_2016=rank(desc(periodo_2016), na.last = T, ties.method = "min"),
+    periodo_2017=rank(desc(periodo_2017), na.last = T, ties.method = "min"),
+    periodo_2018=rank(desc(periodo_2018), na.last = T, ties.method = "min"),
+    ) %>%
+  arrange(periodo_2018) %>%
+  kable() %>% kable_styling(bootstrap_options = c("striped", "hover"), position = "left") %>%
+  scroll_box(height = "300px")
+  
+```  
+  
+Lo primero que se observa, es la permanencia de la candelaria y caribe en el top 3 de los barrios con mayor accidentalidad en todos los años de análisis, por lo que puede dar un indicio interesante de que estos barrios pueden pertenecer a los barrios de alta accidentalidad.  
+
+
+```{r}
+df %>%
+  filter(PERIODO==2014, DISENO=="") %>%
+  mutate(lng=LONGITUD, lat=LATITUD) %>% 
+  select(lng, lat) %>% 
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(
+    clusterOptions = markerClusterOptions(),
+  )
+```
+
+### Calculo de variables para agrupamiento de barrios por año
+
+Para el agrupamiento de los barrios por año, se proponen las siguientes variables:  
+- Promedio de accidentes por mes  
+- Desviación estandar de accidentes por mes  
+- Total de accidentes por tipo de gravedad  
+- Total de accidentes por clase de accidente  
+- Total de accidentes por diseño de la vía donde ocurrió el accidente  
+
+```{r Construcción de conjunto de datos}
+
+metricas_accidentes_mes <- df %>%
+  filter(BARRIO != "") %>% 
+  group_by(BARRIO, PERIODO, MES) %>% 
+  summarise(
+    total_accidentes = n(),
+    .groups="drop"
+  ) %>% 
+  group_by(BARRIO, PERIODO) %>%
+  summarise(
+    promedio_accidente_mes = mean(total_accidentes, na.rm = T),
+    std_accidentes_mes = sd(total_accidentes, na.rm = T),
+    .groups="drop"
+  )
+
+metricas_variables_dummies <- df %>% 
+  fastDummies::dummy_cols(select_columns = c("CLASE", "GRAVEDAD", "DISENO")) %>% 
+  mutate(
+    DISENO_TUNEL_PUENTE = `DISENO_paso a nivel` + `DISENO_paso elevado` + `DISENO_paso inferior` + `DISENO_tunel` + `DISENO_puente` + `DISENO_ponton`
+  ) %>% 
+  filter(BARRIO!="") %>% 
+  rename(
+    OTRO_ACCIDENTE=CLASE_otro,
+    ATROPELLOS=CLASE_atropello,
+    CAIDA_OCUPANTE=`CLASE_caida ocupante`,
+    CHOQUE=CLASE_choque,
+    INCENDIO=CLASE_incendio,
+    VOLCAMIENTOS=CLASE_volcamiento,
+    HERIDO=GRAVEDAD_herido,
+    MUERTO=GRAVEDAD_muerto,
+    SOLO_DANOS=`GRAVEDAD_solo danos`,
+    SIN_DISENO=DISENO_,
+    CICLO_RUTA=`DISENO_ciclo ruta`,
+    GLORIETA=DISENO_glorieta,
+    INTERSECCION=DISENO_interseccion,
+    LOTE_PREDIO=`DISENO_lote o predio`,
+    TRAMO_VIDA=`DISENO_tramo de via`,
+    VIA_PEATOLNAL=`DISENO_via peatonal`
+  ) %>% 
+  group_by(BARRIO, PERIODO, MES) %>% 
+  summarise(
+    TOTAL_OTRO_ACCIDENTE = sum(OTRO_ACCIDENTE),
+    TOTAL_ATROPELLOS=sum(ATROPELLOS),
+    TOTAL_CAIDA_OCUPANTE=sum(CAIDA_OCUPANTE),
+    TOTAL_CHOQUE=sum(CHOQUE),
+    TOTAL_INCENDIO=sum(INCENDIO),
+    TOTAL_VOLCAMIENTOS=sum(VOLCAMIENTOS),
+    TOTAL_HERIDO=sum(HERIDO),
+    TOTAL_MUERTO=sum(MUERTO),
+    TOTAL_SOLO_DANOS=sum(SOLO_DANOS),
+    TOTAL_SIN_DISENO=sum(SIN_DISENO),
+    TOTAL_CICLO_RUTA=sum(CICLO_RUTA),
+    TOTAL_GLORIETA=sum(GLORIETA),
+    TOTAL_INTERSECCION=sum(INTERSECCION),
+    TOTAL_LOTE_PREDIO=sum(LOTE_PREDIO),
+    TOTAL_TRAMO_VIDA=sum(TRAMO_VIDA),
+    TOTAL_VIA_PEATOLNAL=sum(VIA_PEATOLNAL),
+    TOTAL_DISENO_TUNEL_PUENTE = sum(DISENO_TUNEL_PUENTE),
+    .groups="drop"
+  )  %>% 
+  group_by(BARRIO, PERIODO) %>%
+  summarise(
+    AVG_OTRO_ACCIDENTE = sum(TOTAL_OTRO_ACCIDENTE),
+    AVG_ATROPELLOS=sum(TOTAL_ATROPELLOS),
+    AVG_CAIDA_OCUPANTE=sum(TOTAL_CAIDA_OCUPANTE),
+    AVG_CHOQUE=sum(TOTAL_CHOQUE),
+    AVG_INCENDIO=sum(TOTAL_INCENDIO),
+    AVG_VOLCAMIENTOS=sum(TOTAL_VOLCAMIENTOS),
+    AVG_HERIDO=sum(TOTAL_HERIDO),
+    AVG_MUERTO=sum(TOTAL_MUERTO),
+    AVG_SOLO_DANOS=sum(TOTAL_SOLO_DANOS),
+    AVG_SIN_DISENO=sum(TOTAL_SIN_DISENO),
+    AVG_CICLO_RUTA=sum(TOTAL_CICLO_RUTA),
+    AVG_GLORIETA=sum(TOTAL_GLORIETA),
+    AVG_INTERSECCION=sum(TOTAL_INTERSECCION),
+    AVG_LOTE_PREDIO=sum(TOTAL_LOTE_PREDIO),
+    AVG_TRAMO_VIDA=sum(TOTAL_TRAMO_VIDA),
+    AVG_VIA_PEATOLNAL=sum(TOTAL_VIA_PEATOLNAL),
+    AVG_DISENO_TUNEL_PUENTE = sum(TOTAL_DISENO_TUNEL_PUENTE),
+    .groups="drop"
+  )
+
+cluster_df <- merge(metricas_accidentes_mes, metricas_variables_dummies, by = c("BARRIO", "PERIODO"))
+cluster_df_dim <- dim(cluster_df)
+```  
+
+De la construcción de variables del conjunto de datos inicial, resultamos con un conjunto de datos de `r cluster_df_dim[1]` observaciones por `r cluster_df_dim[2]` variables, sin embargo, al ser de nuestro interes hacer un clustering por año, el resultado son 5 conjuntos de datos con aproximadamente 315 observaciones por conjinto de datos. A continuación se puede visualizar la tabla resultante.  
+
+```{r}  
+cluster_df %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), position = "left") %>%
+  scroll_box(height = "300px")
+  
+```  
+
+### Clustering año 2014  
+
+Antes de realizar cualquier técnica de clustering, procederemos a realizar un imputado de variables en caso de que existan valores nulos. Para esto, usaremos la imputación por constante y será cero, ya que la variable más propensa a tener valores faltantes será la desviación estandar para los casos de los barrios que no tengan más de 1 registro en todo el año de choques, para los cuales tiene sentido hacer dicha imputación.  
+```{r}  
+cluster_df_2014 <- cluster_df %>% 
+  filter(PERIODO==2014) %>% 
+  select(-c(PERIODO)) %>% 
+  arrange(promedio_accidente_mes) %>% 
+  mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
+
+
+cluster_df_2014 %>% select(-c(BARRIO)) %>%   mutate_all(funs(is.na(.))) %>% colSums()
+```  
+Comprobamos que ninguna variable tiene valores faltantes, por lo que procedemos a realizar una estandarización de los datos para que la escala de algunas de las variables no afecte el algoritmo que busca minimizar las distancias, adicional por tener un importante número de variables, cualquier las escalas en un espacio de 30 dimensiones tiene un impacto significativamente en las métricas de distancias.  
+
+```{r}  
+cluster_df_2014_sc <- cluster_df_2014 %>% 
+  select(-c(BARRIO)) %>% 
+  scale() %>% 
+  data.frame(.)
+
+fviz_nbclust(cluster_df_2014_sc, kmeans, method = "wss", k.max = 15)
+```
+
+Como se puede evidenciar, entre 3 y 5 clusters, la ganancia marginal en la suma total de cuadrados es poca en función del aumento del número de clusters, por lo que haremos 4 clusters para dicho año.
+
+```{r}  
+set.seed(0)
+kmeans.2014 <- kmeans(x = cluster_df_2014_sc, centers = 4, iter.max = 200)
+cluster_df_2014$cluster <- as.integer(kmeans.2014$cluster)
+```
+
+Veamos algunas estadísticas de los clusters
+```{r}
+cluster_df_2014 %>% 
+  select(-c(BARRIO)) %>% 
+  group_by(cluster) %>% 
+  summarise_all(funs(mean(.))) %>% 
+  merge(cluster_df_2014 %>% 
+          group_by(cluster) %>% 
+          summarise(numero_barrios=n(), .groups="drop"), by="cluster") %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped"), position = "left") %>%
+  scroll_box(height = "300px")
+```  
+
+A nivel general de todas las estadísticas, se observa que los clusters formados son a nivel general una descripción de barrios con diferentes niveles de accidentalidad, indiscriminadamente de la gravedad, clase o zona donde se produjo el accidente.  Es importante recalcar, que las zonas de mayor accidentalidad se concentran en unos cuantos barrios, específicamente, 11 barrios. Estos barrios están teniendo aproximadamente 2 accidentes por día, seguido del siguiente grupo de barrios que pueden tener hasta casi 1 accidente diario. Los otros dos clusters son de una accidentalidad relativamente baja en comparación a los primeros dos grupos y contienen el 76% de los barrios de Medellín.  
+
+Es importante llevar el análisis al espacio geográfico para entender las características de ubicación de los barrios con alta accidentalidad dentro de los grupos.  
+
+```{r}
+cluster_2014_map <- df %>% 
+  filter(PERIODO==2014, BARRIO!="") %>% 
+  group_by(BARRIO) %>% 
+  summarise(
+    lat=mean(LATITUD), lng=mean(LONGITUD), .groups="drop"
+  ) %>% merge(cluster_df_2014 %>% select(BARRIO, cluster), by="BARRIO") %>% 
+  mutate(
+    cluster_colors=as.character(ifelse(cluster==3, "red", 
+                                       ifelse(cluster==4, "orange", 
+                                              ifelse(cluster==1, "yellow", "green"))))
+    )
+
+
+leaflet(cluster_2014_map) %>% addTiles() %>%
+  addCircleMarkers(
+    color = ~cluster_colors,
+    stroke = FALSE, 
+    fillOpacity = 0.5,
+    lng = ~lng, lat = ~lat,
+    label = ~as.character(BARRIO)
+  )
+```
+
+La primera carácteristica que se puede evidenciar de los clusters de los barrios respecto a la ciudad de Medellín, es que aquellos barrios con mayor accidentalidad se encuentran ubicados por las zonas valle y mayormente transitadas en la ciudad, calles como la avenida del río, la avenida guayabal, la avenida de la 33 y sus altededores, y calles como la 30 a la altura de la 80, la 33 con la 65 y la alpujarra entre otros. Mientras que las zonas con menor accidentalidad justamente se encuentran en las periferías de la ciudad, específicamente en el oriente y occidente de la ciudad. Mientras que zonas con el poblado, belen, robledo, se encuentran los niveles de accidentalidad media-alta.  
+
+### Clustering año 2015  
+
+```{r}  
+cluster_df_2015 <- cluster_df %>% 
+  filter(PERIODO==2015) %>% 
+  select(-c(PERIODO)) %>% 
+  arrange(promedio_accidente_mes) %>% 
+  mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
+
+cluster_df_2015_sc <- cluster_df_2015 %>% 
+  select(-c(BARRIO)) %>% 
+  scale() %>% 
+  data.frame(.)
+
+fviz_nbclust(cluster_df_2015_sc, kmeans, method = "wss", k.max = 15)
+
+```  
+
+
+```{r}  
+set.seed(0)
+kmeans.2015 <- kmeans(x = cluster_df_2015_sc, centers = 4, iter.max = 200)
+cluster_df_2015$cluster <- as.integer(kmeans.2015$cluster)
+```
+
+Veamos algunas estadísticas de los clusters
+```{r}
+cluster_df_2015 %>% 
+  select(-c(BARRIO)) %>% 
+  group_by(cluster) %>% 
+  summarise_all(funs(mean(.))) %>% 
+  merge(cluster_df_2015 %>% 
+          group_by(cluster) %>% 
+          summarise(numero_barrios=n(), .groups="drop"), by="cluster") %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped"), position = "left") %>%
+  scroll_box(height = "300px")
+```  
+
+Para el año 2015, vemos que se conserva una estructura muy similar a la clusterización de los barrios por los diferentes niveles de accidentes, se puede dividir entre niveles de **muy alta**, **alta**, **moderada** y **baja** accidentalidad.  
+
+```{r}
+cluster_2015_map <- df %>% 
+  filter(PERIODO==2015, BARRIO!="") %>% 
+  group_by(BARRIO) %>% 
+  summarise(
+    lat=mean(LATITUD), lng=mean(LONGITUD), .groups="drop"
+  ) %>% merge(cluster_df_2015 %>% select(BARRIO, cluster), by="BARRIO") %>% 
+  mutate(
+    cluster_colors=as.character(ifelse(cluster==3, "red", 
+                                       ifelse(cluster==4, "orange", 
+                                              ifelse(cluster==1, "yellow", "green"))))
+    )
+
+
+leaflet(cluster_2015_map) %>% addTiles() %>%
+  addCircleMarkers(
+    color = ~cluster_colors,
+    stroke = FALSE, 
+    fillOpacity = 0.5,
+    lng = ~lng, lat = ~lat,
+    label = ~as.character(BARRIO)
+  )
+```
+
+### Clustering año 2016  
+
+```{r}  
+cluster_df_2016 <- cluster_df %>% 
+  filter(PERIODO==2016) %>% 
+  select(-c(PERIODO)) %>% 
+  arrange(promedio_accidente_mes) %>% 
+  mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
+
+cluster_df_2016_sc <- cluster_df_2016 %>% 
+  select(-c(BARRIO)) %>% 
+  scale() %>% 
+  data.frame(.)
+
+fviz_nbclust(cluster_df_2016_sc, kmeans, method = "wss", k.max = 15)
+
+```  
+
+Veamos algunas estadísticas de los clusters
+```{r}
+set.seed(0)
+kmeans.2016 <- kmeans(x = cluster_df_2016_sc, centers = 4, iter.max = 200)
+cluster_df_2016$cluster <- as.integer(kmeans.2016$cluster)
+
+cluster_df_2016 %>% 
+  select(-c(BARRIO)) %>% 
+  group_by(cluster) %>% 
+  summarise_all(funs(mean(.))) %>% 
+  merge(cluster_df_2016 %>% 
+          group_by(cluster) %>% 
+          summarise(numero_barrios=n(), .groups="drop"), by="cluster") %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped"), position = "left") %>%
+  scroll_box(height = "300px")
+```  
+
+Entre los clusters del 2014, 2015 y 2016 se ve un ligero cambio en el número de barrios por cluster, en espacial para los clusters de más alta accidentalidad, lo cual refleja las matrices de transición denotadas en la parte superior del análisis.  
+
+
+```{r}
+cluster_2016_map <- df %>% 
+  filter(PERIODO==2016, BARRIO!="") %>% 
+  group_by(BARRIO) %>% 
+  summarise(
+    lat=mean(LATITUD), lng=mean(LONGITUD), .groups="drop"
+  ) %>% merge(cluster_df_2016 %>% select(BARRIO, cluster), by="BARRIO") %>% 
+  mutate(
+    cluster_colors=as.character(ifelse(cluster==3, "red", 
+                                       ifelse(cluster==4, "orange", 
+                                              ifelse(cluster==1, "yellow", "green"))))
+    )
+
+
+leaflet(cluster_2016_map) %>% addTiles() %>%
+  addCircleMarkers(
+    color = ~cluster_colors,
+    stroke = FALSE, 
+    fillOpacity = 0.5,
+    lng = ~lng, lat = ~lat,
+    label = ~as.character(BARRIO)
+  )
+```
+
+### Clustering año 2017  
+
+```{r}  
+cluster_df_2017 <- cluster_df %>% 
+  filter(PERIODO==2017) %>% 
+  select(-c(PERIODO)) %>% 
+  arrange(promedio_accidente_mes) %>% 
+  mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
+
+cluster_df_2017_sc <- cluster_df_2017 %>% 
+  select(-c(BARRIO)) %>% 
+  scale() %>% 
+  data.frame(.)
+
+fviz_nbclust(cluster_df_2017_sc, kmeans, method = "wss", k.max = 15)
+
+```  
+
+Veamos algunas estadísticas de los clusters
+```{r}
+set.seed(0)
+kmeans.2017 <- kmeans(x = cluster_df_2017_sc, centers = 3, iter.max = 200)
+cluster_df_2017$cluster <- as.integer(kmeans.2017$cluster)
+
+cluster_df_2017 %>% 
+  select(-c(BARRIO)) %>% 
+  group_by(cluster) %>% 
+  summarise_all(funs(mean(.))) %>% 
+  merge(cluster_df_2017 %>% 
+          group_by(cluster) %>% 
+          summarise(numero_barrios=n(), .groups="drop"), by="cluster") %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped"), position = "left") %>%
+  scroll_box(height = "300px")
+```  
+
+Para el año 2017 se intentó realizar la clusterización con `k = 4`, sin embargo, agrupo no más de 5 barrios para la accidentalidad más baja y la diferencia en las estadísticas eran mínimas, por lo que hizó más sentido hacer el agrupamiento para un parámetro de `k = 3`.  
+
+```{r}
+cluster_2017_map <- df %>% 
+  filter(PERIODO==2017, BARRIO!="") %>% 
+  group_by(BARRIO) %>% 
+  summarise(
+    lat=mean(LATITUD), lng=mean(LONGITUD), .groups="drop"
+  ) %>% merge(cluster_df_2017 %>% select(BARRIO, cluster), by="BARRIO") %>% 
+  mutate(
+    cluster_colors=as.character(
+      ifelse(
+        cluster==3, "red", 
+        ifelse(cluster==1, "orange",
+               "green")
+      )
+    )
+  )
+
+
+leaflet(cluster_2017_map) %>% addTiles() %>%
+  addCircleMarkers(
+    color = ~cluster_colors,
+    stroke = FALSE, 
+    fillOpacity = 0.5,
+    lng = ~lng, lat = ~lat,
+    label = ~as.character(BARRIO)
+  )
+```
+
+### Clustering año 2018  
+
+```{r}  
+cluster_df_2018 <- cluster_df %>% 
+  filter(PERIODO==2018) %>% 
+  select(-c(PERIODO)) %>% 
+  arrange(promedio_accidente_mes) %>% 
+  mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
+
+cluster_df_2018_sc <- cluster_df_2018 %>% 
+  select(-c(BARRIO)) %>% 
+  scale() %>% 
+  data.frame(.)
+
+fviz_nbclust(cluster_df_2018_sc, kmeans, method = "wss", k.max = 15)
+
+```  
+
+Veamos algunas estadísticas de los clusters
+```{r}
+set.seed(0)
+kmeans.2018 <- kmeans(x = cluster_df_2018_sc, centers = 4, iter.max = 200)
+cluster_df_2018$cluster <- as.integer(kmeans.2018$cluster)
+
+cluster_df_2018 %>% 
+  select(-c(BARRIO)) %>% 
+  group_by(cluster) %>% 
+  summarise_all(funs(mean(.))) %>% 
+  merge(cluster_df_2018 %>% 
+          group_by(cluster) %>% 
+          summarise(numero_barrios=n(), .groups="drop"), by="cluster") %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped"), position = "left") %>%
+  scroll_box(height = "300px")
+```  
+
+Para el año 2018, se mantuvo la estructura de 4 clusters con diferencias importantes entre las estadísticas de accidentes.    
+
+```{r}
+cluster_2018_map <- df %>% 
+  filter(PERIODO==2018, BARRIO!="") %>% 
+  group_by(BARRIO) %>% 
+  summarise(
+    lat=mean(LATITUD), lng=mean(LONGITUD), .groups="drop"
+  ) %>% merge(cluster_df_2018 %>% select(BARRIO, cluster), by="BARRIO") %>% 
+  mutate(
+    cluster_colors=as.character(
+      ifelse(
+        cluster==3, "red", 
+        ifelse(
+          cluster==4, "orange",
+          ifelse(
+            cluster==1, "yellow",
+            "green"
+          )
+        )
+      )
+    )
+  )
+
+
+leaflet(cluster_2018_map) %>% addTiles() %>%
+  addCircleMarkers(
+    color = ~cluster_colors,
+    stroke = FALSE, 
+    fillOpacity = 0.5,
+    lng = ~lng, lat = ~lat,
+    label = ~as.character(BARRIO)
+  )
+```

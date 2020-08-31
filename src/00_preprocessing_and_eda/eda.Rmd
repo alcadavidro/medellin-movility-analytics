@@ -1,0 +1,478 @@
+---
+title: "Exploratory Descriptive Analysis - EDA"
+author:
+  - name: "Alejandro Cadavid Romero"
+    email: alcadavidro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+  - name: "Santiago Vasquez Rodriguez"
+    email: svasquezro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include=FALSE}
+# Load packages
+library(rsconnect)
+library(data.table)
+library(ggplot2)
+library(knitr)
+library(treemapify)
+library(leaflet)
+
+```
+
+```{r include=FALSE}
+df <- fread('../data/processed/train_data.csv')
+
+# Create weekly indicator
+df <- df[,FECHA:=as.Date(FECHA)]
+```
+
+# Introducción
+
+Este documento hace parte del trabajo del curso de **Analítica Predictiva** de la Universidad Nacional de Colombia para la Maestría en Ingeniería y Especialización en Analítica. Para los efectos de tener un proceso que brinde la información necesaria en la etapa de modelamiento es imperativo realizar un minucioso análisis descriptivo que permita observar, analizar, discutir, suponer y generar afirmaciones sobre el estado real de los datos y así, saber cuáles serán los pasos siguientes para el modelamiento.
+ 
+
+## Analisis Univariado
+
+
+```{r echo=FALSE, message=TRUE, warning=FALSE}
+
+tempo <- df[,.N,by='GRAVEDAD']
+
+ggplot(tempo, aes(x= reorder(GRAVEDAD, N),
+                  y = N,
+                  fill=GRAVEDAD)) + 
+  geom_bar(position =  "dodge", stat='identity') +
+  geom_text(aes(label = N), 
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  labs(x='Gravedad',
+       y='Numero de accidentes', 
+       title = 'Valores por gravedad del accidentes',
+       fill = 'Gravedad del accidente') +
+  theme(legend.position = "none")
+```
+
+En el actual gráfico se observa el número promedio de accidentes por ***gravedad*** del siniestro. Para esto, se observa que la mayoría de los siniestros que se ocasionan tiene un herido, seguidamente los siniestros que se presentan sólo daños donde hay lecciones en la humanidad de los participantes. Y, finalmente, en el 0.57% (1060) de los siniestros que se presentan estos revisten un grado de fatalidad.. 
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N,by='PERIODO']
+
+ggplot(tempo, aes(x= reorder(PERIODO, N),
+                  y = N,
+                  fill=PERIODO)) + 
+  geom_bar(position =  "dodge", stat='identity') +
+  geom_text(aes(label = N), 
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  labs(x='Periodo',
+       y='Numero de accidentes', 
+       title = 'Valores por Periodo del accidente',
+       fill = 'Periodo del accidente') +
+  theme(legend.position = "none")
+```
+
+El comportamiento anual de accidentes presenta niveles relativamente estables con una tendencia acumulada creciente.Una posible explicación a esto se podría dar con ocasión del creciente parque automotor de la ciudad; tanto para motos como para carros. 
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N,by='CLASE']
+
+ggplot(tempo, aes(x= reorder(CLASE, N),
+                  y = N,
+                  fill=CLASE)) + 
+  geom_bar(position =  "dodge", stat='identity') +
+  geom_text(aes(label = N), 
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  labs(x='Clase de accidente',
+       y='Numero de accidentes', 
+       title = 'Valores por Clase del accidente',
+       fill = 'Clase del accidente') + 
+  theme(axis.text.x = element_text(angle = 10,vjust = 1, hjust=1),legend.position = "none")
+
+```
+
+En cuanto a la ***clase del accidente *** se observa que en su mayoría (122.305) son siniestros simples (choque) donde no se observan afectaciones a la integridad humana. 
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N,by='DIA_NOMBRE']
+
+ggplot(tempo, aes(x= reorder(DIA_NOMBRE, N),
+                  y = N,
+                  fill=DIA_NOMBRE)) + 
+  geom_bar(position =  "dodge", stat='identity') +
+  geom_text(aes(label = N), 
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  labs(x='Dia de accidente',
+       y='Numero de accidentes', 
+       title = 'Valores por Dia del accidente',
+       fill = 'Dia del accidente') + 
+  theme(legend.position = "none")
+```
+
+
+Para los dia de la semana según el accidente se evidencia un hecho intuitivo, donde se espera que los menores días de actividad económicas y movilidad se presenten menos incidentes en las vías; sea este el caso del día domingo donde se observan menores incidentes en la vía.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+df <- within(df,
+             MES <- factor(MES, 
+                           levels=names(sort(table(MES),
+                                             decreasing = FALSE))))
+
+tempo <- df[,.(MES)]
+
+ggplot(data = df) + 
+  geom_bar(mapping = aes(x = MES, fill = MES)) +
+  labs(x='Mes de accidente',
+       y='Numero de accidentes', 
+       title = 'Valores por Mes del accidente',
+       fill = 'Mes del accidente') +
+  scale_x_discrete(limit = factor(1:12)) + 
+  theme(legend.position = "none")
+```
+
+
+Los días de ocio de las personas así como las temporadas de vacaciones son momentos donde las ciudades en su centro urbano presentan menores niveles de movilidad de las personas, por eso no es de extrañar (sin caer en relaciones espurias) que se presenten menos siniestros viales. Así como en el apartado anterior se observaba que, los domingos son días en los que comparativamente con otros días de la semana se presentan menos accidentes, así lo es para el mes de ***Enero*** donde los valores son comparativamente más bajos con el resto de los meses del año. 
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N,by='DISENO']
+tempo <- tempo[!DISENO== "",]
+
+ggplot(tempo, aes(x= reorder(DISENO, N),
+                  y = N,
+                  fill=DISENO)) + 
+  geom_bar(position =  "dodge", stat='identity') +
+  geom_text(aes(label = N), 
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  labs(x='Infraestructura vial',
+       y='Numero de accidentes', 
+       title = 'Valores por Infraestructura vial',
+       fill = 'Infraestructura vial') + 
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1),legend.position = "none")
+```
+
+Entre tanto, la infraestructura vial donde se presentan los siniestros es importante analizarla toda vez que se puede comprender más ampliamente las razones de los siniestros en la ciudad. Para este gráfico se observa que los incidentes se presentan.
+
+## Analisis Bivariado
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N,by=c('GRAVEDAD','CLASE')][,perc:=paste0(round(100*N/sum(N),1),'%'),by=GRAVEDAD][,.SD]
+ggplot(data = tempo, aes(x = GRAVEDAD, y= N, fill = CLASE)) + 
+  geom_bar(position = "fill" , stat='identity') +
+  geom_text(aes(y = N, label = perc),
+            position = position_fill(vjust = 0.5),
+            colour = "white", 
+            vjust = -0.1) +
+  labs(x='Gravedad',
+       y='Porcentaje de accidentes', 
+       title = 'Gravedad del accidente dada la Clase',
+       fill = 'Clase de accidente')
+```
+
+Con este gráfico se observa que la variable ***clase accidente** se puede realizar una reducción de dimensión, pasando de 6 dimensiones a tan solo 2 dimensiones. Estas nuevas dimensiones (Siniestro con Lesiones -SCL- y Siniestro sin Lesión -SSL-) están relacionadas con si hay o no lesiones en el siniestro. Se observa que para la gravedad solo daños el 99.3% de los siniestros fue sin lecciones lo que hace suponer el la mayoría de la clase de choques son menores y no hay lecciones (materiales graves ni sobre las personas). De esta manera, la clase choque se puede convertir *SSL* y las demás clases (atropello, caída ocupante, incendio, otro y volcamiento) se pueden convertir en *SCL*.
+
+
+```{r echo=FALSE, message=TRUE, warning=FALSE}
+tempo <- df[,.N,by=c('PERIODO','CLASE')][,perc:=paste0(round(100*N/sum(N),1),'%'),by=PERIODO][,.SD]
+ggplot(data = tempo, aes(x = PERIODO, y= N, fill = CLASE)) + 
+  geom_bar(position = "fill" , stat='identity') +
+  geom_text(aes(y = N, label = perc), 
+            position = position_fill(vjust = 0.5),
+            vjust = 0.5,
+            colour = "white", 
+            place = "centre") +
+  labs(x='Periodo',
+       y='Porcentaje de accidentes', 
+       title = 'Gravedad del accidente dada la Clase',
+       fill = 'Clase de accidente')
+```
+
+Al analizar el periodo del accidente en relación con la clase se puede observar a primera vista disminuciones para *atropello* y *caida ocupante* mientras que para las demás clases *choque* , *volcamiento* y *otro* una tendencia creciente. En cuanto a los incidentes con *incendios* se puede decir que hay cierto nivel de estabilidad.
+
+```{r echo=FALSE, message=TRUE, warning=FALSE}
+
+tempo <- df[,.N,by=c('DIA_NOMBRE','CLASE')][,perc:=paste0(round(100*N/sum(N),1),'%'),by=DIA_NOMBRE][,.SD]
+
+ggplot(data = tempo, aes(x = DIA_NOMBRE, y= N, fill = CLASE)) + 
+  geom_bar(position = "fill" , stat='identity') +
+  geom_text(aes(y = N, label = perc), 
+            position = position_fill(vjust = 0.5),
+            vjust = 0.5,
+            colour = "white", 
+            place = "centre") +
+  labs(x='Dia',
+       y='Porcentaje de accidentes', 
+       title = 'Dia del accidente dada la Clase',
+       fill = 'Clase de accidente')
+```
+
+En este gráfico se observa un fenómeno particular por cuanto para los días *domingo* si bien los choques son menores en comparación con los otros días; la *caida ocupante*, *atropello* y *otros* presentan valores superiores. Esto puede deberse a un hecho netamente estadístico toda vez que para los domingos se pueden presentar en general menos incidentes en la vía, pero, al realizar una estimación por días esta se puede ver afectada al alza.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N,by=c('MES','CLASE')][,perc:=paste0(round(100*N/sum(N),1),'%'),by=MES][,.SD]
+
+ggplot(data = tempo, aes(x = MES, y= N, fill = CLASE)) + 
+  geom_bar(position = "fill" , stat='identity') +
+  labs(x='Mes',
+       y='Porcentaje de accidentes', 
+       title = 'Mes del accidente dada la Clase',
+       fill = 'Clase de accidente') +
+  scale_x_discrete(limit = factor(1:12))
+```
+
+
+Para los meses del año se observa porcentualmente una estabilidad en las clases de accidentes; sobresaliendo eso sí un mayor porcentaje para los choques en todos los meses en general.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N,by=c('DISENO','CLASE')][,perc:=paste0(round(100*N/sum(N),1),'%'),by=DISENO][,.SD]
+
+tempo <- tempo[!DISENO=="",]
+ggplot(data = tempo, aes(x = DISENO, y= N, fill = CLASE)) + 
+  geom_bar(position = "fill" , stat='identity') +
+  labs(x='Infraestructura vial',
+       y='Porcentaje de accidentes', 
+       title = 'Infraestructura vial del accidente dada la Clase',
+       fill = 'Clase de accidente')+ 
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1))
+```
+
+
+Para la infraestructura vial contrastada con la clase de accidente hay varias hechos relevantes:
+
+*1.* Los atropellos se presentan la mayoría de las veces contra ciclistas (ciclo ruta) y contra peatones (vía peatonal) lo cual hace que estos 2 actores (ciclistas y peatones) sean los más vulnerables en las vías.
+
+*2.* Las caídas de ocupante se dan con mayor frecuencia en túneles, lotes o predios y en ciclo rutas.
+
+ 
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(GRAVEDAD,PERIODO)]
+
+ggplot(tempo, aes(x= PERIODO,y=N, group=GRAVEDAD, color=GRAVEDAD)) +
+  geom_line()+
+  facet_wrap(~GRAVEDAD, scales = "free_y") +
+    labs(x='Periodo del accidente',
+         title = "Comportamiento de accidentes anuales por gravedad") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(axis.text.x = element_text(angle = 20,vjust = 1, hjust=1), legend.position = "none")
+```
+
+
+Para las tendencias anuales de la gravedad del accidente: se pueden observar disminuciones de la fatalidad de los mismos (*heridos* y *muertos*) lo que puede hablar sobre mejores niveles de educación vial de los actores. Sin embargo, para *solo daño* se presenta una tendencia creciente. No obstante, se hace imperativo obtener más datos para esto ya que tan solo 4 años no parecen ser suficientes para comprender ampliamente estos fenómenos.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+
+tempo <- df[,.N, by = .(CLASE,PERIODO)]
+
+ggplot(tempo, aes(x= PERIODO,y=N, group=CLASE, color=CLASE)) +
+  geom_line()+
+  facet_wrap(~CLASE, scales = "free_y") +
+    labs(x='Periodo del accidente',
+         title = "Comportamiento de accidentes anuales por clase de accidente") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(axis.text.x = element_text(angle = 10,vjust = 1, hjust=1),legend.position = "none")
+```
+
+Para este gráfico se puede ver cuál ha sido la tendencia en los últimos años de las clases de accidentes evidenciando crecimiento para *volcamiento*, *incendio*, *choque* y *otro*; mientras que para *atropello* y *caida ocupante* se registran menores incidentes viales. No obstante, los niveles de *atropello* y *caida ocupante* son mucho mayores que para *volcamiento*, esto último podría encender las alarmas en cuanto a los volcamientos de vehículos.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(DISENO,PERIODO)]
+
+tempo <- tempo[!DISENO=="",]
+
+ggplot(tempo, aes(PERIODO,y=N, group=DISENO, color=DISENO)) +
+  geom_line()+
+  facet_wrap(~DISENO, scales = "free_y") +
+    labs(x='Periodo del accidente',
+         title = "Comportamiento de accidentes anuales por infraestructura vial") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(axis.text.x = element_text(angle = 20,vjust = 1, hjust=1),legend.position = "none")
+```
+
+
+La evidencia en esta gráfica sugiere valores crecientes para la gran mayoría de las categorías. De igual manera, es de resaltar la disminución que se dio para el 2017 de los incidentes en los tramos de vía pasando de un poco más de 36.000 en 2016 a 30.000 en 2017.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE, paged.print=TRUE}
+tempo <- df[,.N, by = .(DIA_NOMBRE,PERIODO)]
+
+ggplot(tempo, 
+       aes(x= PERIODO,y=N, group=DIA_NOMBRE, color=DIA_NOMBRE)) +
+  geom_line()+
+  facet_wrap(~DIA_NOMBRE, scales = "free_y") +
+    labs(x='Periodo del accidente',
+         title = "Comportamiento de accidentes anuales por dia de la semana") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(axis.text.x = element_text(angle = 12,vjust = 1, hjust=1),legend.position = "none")
+```
+
+
+Esta gráfica soporta la tesis que se tenia mas arriba donde se observaba que en valores los días *domingo* se presentan menos accidentes en comparación con los demás días de la semana, esto bajo el supuesto que son días de ocio de las personas y el uso de los medios de transporte son menores. Así mismo, este gráfico muestra que para todos los días con excepción para *domingo* todos los días tienen valores muy similares.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(MES,PERIODO)]
+
+ggplot(tempo, aes(x= PERIODO,y=N, group=MES, color=MES)) +
+  geom_line()+
+  facet_wrap(~MES, scales = "free_y") +
+    labs(x='Periodo del accidente',
+         title = "Comportamiento de accidentes anuales por mes") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(axis.text.x = element_text(angle = 25,vjust = 1, hjust=1), legend.position = "none") 
+```
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(CLASE,MES)]
+
+ggplot(tempo, aes(MES,y=N, group=CLASE, color=CLASE)) +
+  geom_line()+
+  facet_wrap(~CLASE, scales = "free_y") +
+    labs(x='Mes del accidente',
+         title = "Comportamiento de accidentes mensuales por clase de accidente") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(legend.position = "none") +
+  scale_x_discrete(limit = factor(1:12))
+```
+
+
+Para esta gráfica se tiene un hecho particular para el label de *incendio* donde para algunos meses (5, 6, 11, y 12) no se presentan accidentes donde haya involucrado un accidente. Esto supone entonces que la tendencia que se observa en este gráfico no es tan diciente toda vez que pueden pasar varios meses sin presentar un incendio durante algún siniestro. Entre tanto, para las demás clases de accidentes se observan leves tendencias crecientes.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(GRAVEDAD,MES)]
+
+ggplot(tempo, aes(MES,y=N, group=GRAVEDAD, color=GRAVEDAD)) +
+  geom_line()+
+  facet_wrap(~GRAVEDAD, scales = "free_y") +
+    labs(x='Mes del accidente',
+         title = "Comportamiento de accidentes mensuales por gravedad") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(legend.position = "none") +
+  scale_x_discrete(limit = factor(1:12))
+```
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(DISENO,MES)]
+
+ggplot(tempo, aes(MES,y=N, group=DISENO, color=DISENO)) +
+  geom_line()+
+  facet_wrap(~DISENO, scales = "free_y") +
+    labs(x='Mes del accidente',
+         title = "Comportamiento de accidentes mensuales por infraestructura vial") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(legend.position = "none") +
+  scale_x_discrete(limit = factor(1:12))
+```
+
+Quizás con ventanas de tiempo un poco más amplias en años, se podría decir con mayor contundencia que para las diferentes infraestructuras viales se tienen procesos con tendencias crecientes sin mayores cambios estructurales. 
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(DIA_NOMBRE,MES)]
+
+ggplot(tempo, aes(MES,y=N, group=DIA_NOMBRE, color=DIA_NOMBRE)) +
+  geom_line()+
+  facet_wrap(~DIA_NOMBRE, scales = "free_y") +
+    labs(x='Mes del accidente',
+         title = "Comportamiento de accidentes mensuales por dia de la semana") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(legend.position = "none") +
+  scale_x_discrete(limit = factor(1:12))
+```
+
+
+#### Finalmente,para las variables en las cuales se presentan muchos labels se realiza un análisis gráfico diferencial toda vez que para los gráficos que se tienen previamente no eran los apropiados o no arrojaban la información suficiente que ayudará para la etapa de modelamiento.
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = c('CLASE', 'COMUNA')]
+tempo <- tempo[!COMUNA %in% c("", 0),]
+
+ggplot(tempo, 
+       aes(fill = CLASE, 
+           area = N,
+           label = COMUNA
+           )) +
+  geom_treemap() +
+  labs(fill = 'Clase de accidente')+
+  geom_treemap_text(colour = "white", 
+                    place = "centre") +
+  labs(title = "Composicion de clase de accidente por Comuna") 
+```
+
+Este gráfico está evidenciando que los lugares de la ciudad donde se presentan mayores números de autos también son lugares con mayores niveles de choque: La Candelaria, El poblado, Belén, Guayabal, Robledo y demás, son lugares con alta congestión vehicular lo que puede traducir mayores niveles de choques.
+
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = c('CLASE', 'BARRIO')]
+tempo <- tempo[!BARRIO %in% c("", 0, 6001, 9086),]
+
+ggplot(tempo, 
+       aes(fill = CLASE, 
+           area = N,
+           label = BARRIO
+           )) +
+  geom_treemap() +
+  labs(fill = 'Clase de accidente')+
+  geom_treemap_text(colour = "white", 
+                    place = "centre") +
+  labs(title = "Composicion de Clase de accidente por Barrio") 
+```
+
+
+
+#### Otro de los gráficos que se resaltan dentro del análisis descriptivo son los mapas georeferenciados
+
+
+
+```{r Visualización de los centroides por diseno, echo=FALSE, message=TRUE, warning=TRUE}
+df %>% 
+  dplyr::filter(DISENO  %in% c("tramo de via","interseccion","lote o predio","puente","glorieta","ciclo ruta","tunel","paso elevado","paso inferior","paso a nivel","ponton","via peatonal")) %>% 
+  dplyr::mutate(lat = LATITUD, lng = LONGITUD) %>% 
+  dplyr::select(lat, lng) %>% 
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(
+    clusterOptions = markerClusterOptions())
+```
+
+En estos mapas se puede evidenciar los cluster en las ciudad con los conteos de los accidentes según la infraestructura vial. Un tema a resaltar con estos mapas es que se considera que algunas *latitudes* y *longitudes* no son reales. Como es el caso de que 16.159 de las observaciones se dan en un punto que a nuestro concepto si quiera se puede acceder mediante algún medio de transporte, lo cual hace sospechar que estas medidas *latitud* y *longitud* son errores humanos en la digitación.
+
+```{r Visualización de los centroides por gravedad, echo=FALSE}
+df %>% 
+  dplyr::filter(GRAVEDAD %in% c("solo danos","herido","muerto")) %>% 
+  dplyr::mutate(lat = LATITUD, lng = LONGITUD) %>% 
+  dplyr::select(lat, lng) %>% 
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(
+    clusterOptions = markerClusterOptions())
+```
+
+```{r Visualización de los centroides por clase de accidente, echo=FALSE}
+df %>% 
+  dplyr::filter(CLASE %in% c("choque","otro","atropello","volcamiento","incendio","caida ocupante")) %>% 
+  dplyr::mutate(lat = LATITUD, lng = LONGITUD) %>% 
+  dplyr::select(lat, lng) %>% 
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(
+    clusterOptions = markerClusterOptions())
+```
+

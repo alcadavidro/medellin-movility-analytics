@@ -16,35 +16,12 @@
       "Repository": "CRAN",
       "Hash": "8f9ce74c6417d61f0782cbae5fd2b7b0"
     },
-<<<<<<< HEAD
     "FactoMineR": {
       "Package": "FactoMineR",
       "Version": "2.3",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "1f47ca5629ef9dc24d5ea1cd2efe4f87"
-=======
-    "DBI": {
-      "Package": "DBI",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "4744be45519d675af66c28478720fce5"
-    },
-    "DT": {
-      "Package": "DT",
-      "Version": "0.15",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "85738c69035e67ec4b484a5e02640ef6"
-    },
-    "KernSmooth": {
-      "Package": "KernSmooth",
-      "Version": "2.23-17",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "bbff70c8c0357b5b88238c83f680fcd3"
->>>>>>> Create EDA and apply woe transformer
     },
     "MASS": {
       "Package": "MASS",
@@ -60,7 +37,6 @@
       "Repository": "CRAN",
       "Hash": "08588806cba69f04797dab50627428ed"
     },
-<<<<<<< HEAD
     "MatrixModels": {
       "Package": "MatrixModels",
       "Version": "0.4-1",
@@ -81,14 +57,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "5ff15925d7e369565203053934e8d9d9"
-=======
-    "ModelMetrics": {
-      "Package": "ModelMetrics",
-      "Version": "1.2.2.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "40a55bd0b44719941d103291ac5e9d74"
->>>>>>> Create EDA and apply woe transformer
     },
     "R6": {
       "Package": "R6",
@@ -104,19 +72,6 @@
       "Repository": "CRAN",
       "Hash": "e031418365a7f7a766181ab5a41a5716"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
-    "RSQLite": {
-      "Package": "RSQLite",
-      "Version": "2.2.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "2e813101e637bfd423f763d20350ed3d"
-    },
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "Rcpp": {
       "Package": "Rcpp",
       "Version": "1.0.5",
@@ -124,7 +79,6 @@
       "Repository": "CRAN",
       "Hash": "125dc7a0ed375eb68c0ce533b48d291f"
     },
-<<<<<<< HEAD
     "RcppArmadillo": {
       "Package": "RcppArmadillo",
       "Version": "0.9.900.2.0",
@@ -152,14 +106,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "4f57884290cc75ab22f4af9e9d4ca862"
-=======
-    "SQUAREM": {
-      "Package": "SQUAREM",
-      "Version": "2020.3",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "e08d8c8eec7eb52ff6c12bd2cd0897b6"
->>>>>>> Create EDA and apply woe transformer
     },
     "askpass": {
       "Package": "askpass",
@@ -189,52 +135,12 @@
       "Repository": "CRAN",
       "Hash": "543776ae6848fde2f48ff3816d0628bc"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
     "boot": {
       "Package": "boot",
       "Version": "1.3-25",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "bd51734a754b6c2baf28b2d1ebc11e91"
-    },
-    "broom": {
-      "Package": "broom",
-      "Version": "0.7.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "2ca5ae42f3bfd149504d63c833c2be26"
-=======
-    "bit": {
-      "Package": "bit",
-      "Version": "4.0.4",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "f36715f14d94678eea9933af927bc15d"
-    },
-    "bit64": {
-      "Package": "bit64",
-      "Version": "4.0.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "7eed8e263a2287b3dd51b2ea307a28b2"
-    },
-=======
->>>>>>> Stashed changes
-    "blob": {
-      "Package": "blob",
-      "Version": "1.2.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "9addc7e2c5954eca5719928131fed98c"
-    },
-    "brew": {
-      "Package": "brew",
-      "Version": "1.0-6",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "92a5f887f9ae3035ac7afde22ba73ee9"
->>>>>>> Create EDA and apply woe transformer
     },
     "broom": {
       "Package": "broom",
@@ -250,7 +156,6 @@
       "Repository": "CRAN",
       "Hash": "643163a00cb536454c624883a10ae0bc"
     },
-<<<<<<< HEAD
     "car": {
       "Package": "car",
       "Version": "3.0-9",
@@ -271,28 +176,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "f61dbaec772ccd2e17705c1e872e9e7c"
-=======
-    "caret": {
-      "Package": "caret",
-      "Version": "6.0-86",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "77b0545e2c16b4e57c8da2d14042b28d"
-    },
-    "cellranger": {
-      "Package": "cellranger",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "f61dbaec772ccd2e17705c1e872e9e7c"
-    },
-    "class": {
-      "Package": "class",
-      "Version": "7.3-17",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "9267f5dab59a4ef44229858a142bded1"
->>>>>>> Create EDA and apply woe transformer
     },
     "cli": {
       "Package": "cli",
@@ -308,7 +191,6 @@
       "Repository": "CRAN",
       "Hash": "08cf4045c149a0f0eaf405324c7495bd"
     },
-<<<<<<< HEAD
     "cluster": {
       "Package": "cluster",
       "Version": "2.1.0",
@@ -323,8 +205,6 @@
       "Repository": "CRAN",
       "Hash": "ae7bd8611562d2d7554b3f303451abab"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "codetools": {
       "Package": "codetools",
       "Version": "0.2-16",
@@ -339,7 +219,6 @@
       "Repository": "CRAN",
       "Hash": "6b436e95723d1f0e861224dd9b094dfb"
     },
-<<<<<<< HEAD
     "conquer": {
       "Package": "conquer",
       "Version": "1.0.1",
@@ -360,21 +239,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "82bae0172ae9d4c4f88a440ad01f73bb"
-=======
-    "commonmark": {
-      "Package": "commonmark",
-      "Version": "1.7",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "0f22be39ec1d141fd03683c06f3a6e67"
-    },
-    "covr": {
-      "Package": "covr",
-      "Version": "3.5.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "cbc6df1ef6ee576f844f973c1fc04ab4"
->>>>>>> Create EDA and apply woe transformer
     },
     "cpp11": {
       "Package": "cpp11",
@@ -411,8 +275,6 @@
       "Repository": "CRAN",
       "Hash": "06d5863292e2e8ffbb063ce34e77bb2a"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
     "dendextend": {
       "Package": "dendextend",
       "Version": "1.13.4",
@@ -420,17 +282,6 @@
       "Repository": "CRAN",
       "Hash": "842396bdc603ee4a40d8039b5540f2e6"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
-    "dbplyr": {
-      "Package": "dbplyr",
-      "Version": "1.4.4",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "2ba60a82dd9b6ca3cee0d8e2574cdf0e"
-    },
->>>>>>> Stashed changes
     "desc": {
       "Package": "desc",
       "Version": "1.2.0",
@@ -438,16 +289,6 @@
       "Repository": "CRAN",
       "Hash": "6c8fe8fa26a23b79949375d372c7b395"
     },
-<<<<<<< HEAD
-=======
-    "devtools": {
-      "Package": "devtools",
-      "Version": "2.3.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "271df6a328617c64149283e98b1cd8da"
-    },
->>>>>>> Create EDA and apply woe transformer
     "digest": {
       "Package": "digest",
       "Version": "0.6.25",
@@ -457,7 +298,6 @@
     },
     "dplyr": {
       "Package": "dplyr",
-<<<<<<< HEAD
       "Version": "1.0.1",
       "Source": "Repository",
       "Repository": "CRAN",
@@ -469,12 +309,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "bfa61f1a00c0d30b86bf13d35748e24c"
-=======
-      "Version": "1.0.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "d0509913b27ea898189ee664b6030dc2"
->>>>>>> Create EDA and apply woe transformer
     },
     "ellipsis": {
       "Package": "ellipsis",
@@ -490,7 +324,6 @@
       "Repository": "CRAN",
       "Hash": "ec8ca05cffcc70569eaaad8469d2a3a7"
     },
-<<<<<<< HEAD
     "factoextra": {
       "Package": "factoextra",
       "Version": "1.0.7",
@@ -498,8 +331,6 @@
       "Repository": "CRAN",
       "Hash": "e95f1aed34b3f0a15a0c308175ee4c80"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "fansi": {
       "Package": "fansi",
       "Version": "0.4.1",
@@ -514,8 +345,6 @@
       "Repository": "CRAN",
       "Hash": "dad6793a5a1f73c8e91f1a1e3e834b05"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
     "fastDummies": {
       "Package": "fastDummies",
       "Version": "1.6.1",
@@ -530,8 +359,6 @@
       "Repository": "CRAN",
       "Hash": "09fb526c49460c4933bc077db6eba924"
     },
-=======
->>>>>>> Stashed changes
     "forcats": {
       "Package": "forcats",
       "Version": "0.5.0",
@@ -539,11 +366,6 @@
       "Repository": "CRAN",
       "Hash": "1cb4279e697650f0bd78cd3601ee7576"
     },
-<<<<<<< Updated upstream
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "foreach": {
       "Package": "foreach",
       "Version": "1.5.0",
@@ -551,21 +373,12 @@
       "Repository": "CRAN",
       "Hash": "8fb3ff01ee7d85893f56df8d77213381"
     },
-<<<<<<< HEAD
     "foreign": {
       "Package": "foreign",
       "Version": "0.8-80",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "ae1b1e15cc6ccb2bc61c0ac33e86d35f"
-=======
-    "fs": {
-      "Package": "fs",
-      "Version": "1.5.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "44594a07a42e5f91fac9f93fda6d0109"
->>>>>>> Create EDA and apply woe transformer
     },
     "generics": {
       "Package": "generics",
@@ -574,21 +387,19 @@
       "Repository": "CRAN",
       "Hash": "b8cff1d1391fd1ad8b65877f4c7f2e53"
     },
-<<<<<<< HEAD
     "geosphere": {
       "Package": "geosphere",
       "Version": "1.5-10",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "eee36211f74e4dbc80eae9d504b58f0b"
-=======
+    },
     "ggfittext": {
       "Package": "ggfittext",
       "Version": "0.9.0",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "1c658d36302cf96a331c0059587fae70"
->>>>>>> Create EDA and apply woe transformer
     },
     "ggplot2": {
       "Package": "ggplot2",
@@ -597,7 +408,6 @@
       "Repository": "CRAN",
       "Hash": "4ded8b439797f7b1693bd3d238d0106b"
     },
-<<<<<<< HEAD
     "ggpubr": {
       "Package": "ggpubr",
       "Version": "0.4.0",
@@ -632,21 +442,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "056100917c75e6f8a0d36f8bdd552799"
-=======
-    "gh": {
-      "Package": "gh",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "89ea5998938d1ad55f035c8a86f96b74"
-    },
-    "git2r": {
-      "Package": "git2r",
-      "Version": "0.27.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "531a82d1beed1f545beb25f4f5945bf7"
->>>>>>> Create EDA and apply woe transformer
     },
     "glue": {
       "Package": "glue",
@@ -655,32 +450,12 @@
       "Repository": "CRAN",
       "Hash": "f43e0d5e85ccb0a4045670c0607ee504"
     },
-<<<<<<< HEAD
     "gridExtra": {
       "Package": "gridExtra",
       "Version": "2.3",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "7d7f283939f563670a697165b2cf5560"
-=======
-    "gower": {
-      "Package": "gower",
-      "Version": "0.2.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "be6a2b3529928bd803d1c437d1d43152"
-    },
-    "gridExtra": {
-      "Package": "gridExtra",
-      "Version": "2.3",
-      "Source": "Repository",
-      "Repository": "CRAN",
-<<<<<<< Updated upstream
-      "Hash": "a8ebb0bb0edcf041a7649ee43a0e1735"
->>>>>>> Create EDA and apply woe transformer
-=======
-      "Hash": "7d7f283939f563670a697165b2cf5560"
->>>>>>> Stashed changes
     },
     "gtable": {
       "Package": "gtable",
@@ -689,10 +464,6 @@
       "Repository": "CRAN",
       "Hash": "ac5c6baf7822ce8732b343f14c072c4d"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
->>>>>>> Stashed changes
     "haven": {
       "Package": "haven",
       "Version": "2.3.1",
@@ -700,11 +471,6 @@
       "Repository": "CRAN",
       "Hash": "221d0ad75dfa03ebf17b1a4cc5c31dfc"
     },
-<<<<<<< Updated upstream
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "highr": {
       "Package": "highr",
       "Version": "0.8",
@@ -712,10 +478,6 @@
       "Repository": "CRAN",
       "Hash": "4dc5bb88961e347a0f4d8aad597cbfac"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
->>>>>>> Stashed changes
     "hms": {
       "Package": "hms",
       "Version": "0.5.3",
@@ -723,11 +485,6 @@
       "Repository": "CRAN",
       "Hash": "726671f634529d470545f9fd1a9d1869"
     },
-<<<<<<< Updated upstream
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "htmltools": {
       "Package": "htmltools",
       "Version": "0.5.0",
@@ -749,23 +506,6 @@
       "Repository": "CRAN",
       "Hash": "a525aba14184fec243f9eaec62fbed43"
     },
-<<<<<<< HEAD
-=======
-    "ini": {
-      "Package": "ini",
-      "Version": "0.3.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "6154ec2223172bce8162d4153cda21f7"
-    },
-    "ipred": {
-      "Package": "ipred",
-      "Version": "0.9-9",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "816a7f746179f159f8faa87af730f3c1"
-    },
->>>>>>> Create EDA and apply woe transformer
     "isoband": {
       "Package": "isoband",
       "Version": "0.2.2",
@@ -787,7 +527,6 @@
       "Repository": "CRAN",
       "Hash": "2657f20b9a74c996c602e74ebe540b06"
     },
-<<<<<<< HEAD
     "kableExtra": {
       "Package": "kableExtra",
       "Version": "1.1.0",
@@ -795,8 +534,6 @@
       "Repository": "CRAN",
       "Hash": "37e11c605b3c0b7207763beda52c8535"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "knitr": {
       "Package": "knitr",
       "Version": "1.29",
@@ -811,16 +548,6 @@
       "Repository": "CRAN",
       "Hash": "73832978c1de350df58108c745ed0e3e"
     },
-<<<<<<< HEAD
-=======
-    "later": {
-      "Package": "later",
-      "Version": "1.1.0.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "d0a62b247165aabf397fded504660d8a"
-    },
->>>>>>> Create EDA and apply woe transformer
     "lattice": {
       "Package": "lattice",
       "Version": "0.20-41",
@@ -828,16 +555,6 @@
       "Repository": "CRAN",
       "Hash": "fbd9285028b0263d76d18c95ae51a53d"
     },
-<<<<<<< HEAD
-=======
-    "lava": {
-      "Package": "lava",
-      "Version": "1.6.7",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "e9a046d514942f36bf8ae2a5e3ded35f"
-    },
->>>>>>> Create EDA and apply woe transformer
     "lazyeval": {
       "Package": "lazyeval",
       "Version": "0.2.2",
@@ -845,10 +562,6 @@
       "Repository": "CRAN",
       "Hash": "d908914ae53b04d4c0c0fd72ecc35370"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
->>>>>>> Stashed changes
     "leaflet": {
       "Package": "leaflet",
       "Version": "2.0.3",
@@ -863,7 +576,6 @@
       "Repository": "CRAN",
       "Hash": "d3082a7beac4a1aeb96100ff06265d7e"
     },
-<<<<<<< Updated upstream
     "leaps": {
       "Package": "leaps",
       "Version": "3.1",
@@ -871,10 +583,6 @@
       "Repository": "CRAN",
       "Hash": "e7023edcf59fd695d92eb01a7f37f991"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "lifecycle": {
       "Package": "lifecycle",
       "Version": "0.2.0",
@@ -882,7 +590,6 @@
       "Repository": "CRAN",
       "Hash": "361811f31f71f8a617a9a68bf63f1f42"
     },
-<<<<<<< HEAD
     "lme4": {
       "Package": "lme4",
       "Version": "1.1-23",
@@ -890,8 +597,6 @@
       "Repository": "CRAN",
       "Hash": "ad24d1fd9ed431543f4633bb083e194a"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "lubridate": {
       "Package": "lubridate",
       "Version": "1.7.9",
@@ -906,7 +611,6 @@
       "Repository": "CRAN",
       "Hash": "1bb58822a20301cee84a41678e25d9b7"
     },
-<<<<<<< HEAD
     "maptools": {
       "Package": "maptools",
       "Version": "1.0-2",
@@ -914,8 +618,6 @@
       "Repository": "CRAN",
       "Hash": "1cb5cb7bbab76318944e3794ff2512ae"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "markdown": {
       "Package": "markdown",
       "Version": "1.1",
@@ -923,21 +625,12 @@
       "Repository": "CRAN",
       "Hash": "61e4a10781dd00d7d81dd06ca9b94e95"
     },
-<<<<<<< HEAD
     "matrixStats": {
       "Package": "matrixStats",
       "Version": "0.56.0",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "d16f18aeb023d7a80c090d9458fc75a6"
-=======
-    "memoise": {
-      "Package": "memoise",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "58baa74e4603fcfb9a94401c58c8f9b1"
->>>>>>> Create EDA and apply woe transformer
     },
     "mgcv": {
       "Package": "mgcv",
@@ -953,8 +646,6 @@
       "Repository": "CRAN",
       "Hash": "e87a35ec73b157552814869f45a63aa3"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
     "minqa": {
       "Package": "minqa",
       "Version": "1.2.4",
@@ -962,17 +653,6 @@
       "Repository": "CRAN",
       "Hash": "eaee7d2a6f3ed4491df868611cb064cc"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
-    "modelr": {
-      "Package": "modelr",
-      "Version": "0.1.8",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "9fd59716311ee82cba83dc2826fc5577"
-    },
->>>>>>> Stashed changes
     "munsell": {
       "Package": "munsell",
       "Version": "0.5.0",
@@ -980,7 +660,6 @@
       "Repository": "CRAN",
       "Hash": "6dfe8bf774944bd5595785e3229d8771"
     },
-<<<<<<< HEAD
     "na.tools": {
       "Package": "na.tools",
       "Version": "0.3.1",
@@ -988,8 +667,6 @@
       "Repository": "CRAN",
       "Hash": "71015c604de1c1a437972bd9ec98d6c5"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "nlme": {
       "Package": "nlme",
       "Version": "3.1-148",
@@ -997,7 +674,6 @@
       "Repository": "CRAN",
       "Hash": "662f52871983ff3e3ef042c62de126df"
     },
-<<<<<<< HEAD
     "nloptr": {
       "Package": "nloptr",
       "Version": "1.2.2.2",
@@ -1005,8 +681,6 @@
       "Repository": "CRAN",
       "Hash": "2737faeee353704efec5afa1e943dd64"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "nnet": {
       "Package": "nnet",
       "Version": "7.3-14",
@@ -1014,16 +688,6 @@
       "Repository": "CRAN",
       "Hash": "0d87e50e11394a7151a28873637d799a"
     },
-<<<<<<< HEAD
-=======
-    "numDeriv": {
-      "Package": "numDeriv",
-      "Version": "2016.8-1.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "df58958f293b166e4ab885ebcad90e02"
-    },
->>>>>>> Create EDA and apply woe transformer
     "openssl": {
       "Package": "openssl",
       "Version": "1.4.2",
@@ -1031,21 +695,12 @@
       "Repository": "CRAN",
       "Hash": "b3209c62052922b6c629544d94c8fa8a"
     },
-<<<<<<< HEAD
     "openxlsx": {
       "Package": "openxlsx",
       "Version": "4.1.5",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "9b9b5322c83ee21db73c8ba3787897ca"
-=======
-    "pROC": {
-      "Package": "pROC",
-      "Version": "1.16.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "285ca01e793958ac6f2c264c84dbb16b"
->>>>>>> Create EDA and apply woe transformer
     },
     "packrat": {
       "Package": "packrat",
@@ -1054,7 +709,6 @@
       "Repository": "CRAN",
       "Hash": "2ebd34a38f4248281096cc723535b66d"
     },
-<<<<<<< HEAD
     "pbkrtest": {
       "Package": "pbkrtest",
       "Version": "0.4-8.6",
@@ -1062,8 +716,6 @@
       "Repository": "CRAN",
       "Hash": "d547eab65958fc4f5d68ad0adfacfcf4"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "pillar": {
       "Package": "pillar",
       "Version": "1.4.6",
@@ -1092,19 +744,6 @@
       "Repository": "CRAN",
       "Hash": "b6b150cd4709e0c0c9b5d51ac4376282"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
-    "plogr": {
-      "Package": "plogr",
-      "Version": "0.2.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "09eb987710984fc2905c7129c7d85e65"
-    },
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "plyr": {
       "Package": "plyr",
       "Version": "1.8.6",
@@ -1112,10 +751,6 @@
       "Repository": "CRAN",
       "Hash": "ec0e5ab4e5f851f6ef32cd1d1984957f"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
->>>>>>> Stashed changes
     "png": {
       "Package": "png",
       "Version": "0.1-7",
@@ -1123,7 +758,6 @@
       "Repository": "CRAN",
       "Hash": "03b7076c234cb3331288919983326c55"
     },
-<<<<<<< Updated upstream
     "polynom": {
       "Package": "polynom",
       "Version": "1.4-0",
@@ -1131,10 +765,6 @@
       "Repository": "CRAN",
       "Hash": "c396592ecfe9e75cee1013533efafe34"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "praise": {
       "Package": "praise",
       "Version": "1.0.0",
@@ -1156,21 +786,6 @@
       "Repository": "CRAN",
       "Hash": "f4f13345fcb00c51ace12f65dd18749f"
     },
-<<<<<<< HEAD
-    "progress": {
-      "Package": "progress",
-      "Version": "1.2.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "14dc9f7a3c91ebb14ec5bb9208a07061"
-=======
-    "prodlim": {
-      "Package": "prodlim",
-      "Version": "2019.11.13",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "c243bf70db3a6631a0c8783152fb7db9"
-    },
     "progress": {
       "Package": "progress",
       "Version": "1.2.2",
@@ -1178,24 +793,6 @@
       "Repository": "CRAN",
       "Hash": "14dc9f7a3c91ebb14ec5bb9208a07061"
     },
-    "promises": {
-      "Package": "promises",
-      "Version": "1.1.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "a8730dcbdd19f9047774909f0ec214a4"
-    },
-<<<<<<< Updated upstream
-    "proto": {
-      "Package": "proto",
-      "Version": "1.0.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "5cb1623df69ee6102d011c7f78f5791d"
->>>>>>> Create EDA and apply woe transformer
-    },
-=======
->>>>>>> Stashed changes
     "ps": {
       "Package": "ps",
       "Version": "1.3.4",
@@ -1210,8 +807,6 @@
       "Repository": "CRAN",
       "Hash": "97def703420c8ab10d8f0e6c72101e02"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
     "quadprog": {
       "Package": "quadprog",
       "Version": "1.5-8",
@@ -1226,8 +821,6 @@
       "Repository": "CRAN",
       "Hash": "0d5ecb71ac9a614f260c668564118a93"
     },
-=======
->>>>>>> Stashed changes
     "raster": {
       "Package": "raster",
       "Version": "3.3-13",
@@ -1235,7 +828,6 @@
       "Repository": "CRAN",
       "Hash": "51cfecf7b9518d46b119f92d581616b6"
     },
-<<<<<<< Updated upstream
     "readr": {
       "Package": "readr",
       "Version": "1.3.1",
@@ -1256,58 +848,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "c66b930d20bb6d858cd18e1cebcfae5c"
-=======
-=======
->>>>>>> Stashed changes
-    "rcmdcheck": {
-      "Package": "rcmdcheck",
-      "Version": "1.3.3",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ed95895886dab6d2a584da45503555da"
-    },
-    "readr": {
-      "Package": "readr",
-      "Version": "1.3.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "af8ab99cd936773a148963905736907b"
-    },
-    "readxl": {
-      "Package": "readxl",
-      "Version": "1.3.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "63537c483c2dbec8d9e3183b3735254a"
-    },
-    "recipes": {
-      "Package": "recipes",
-      "Version": "0.1.13",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "f3ce68cd2bd38e508cbdcbec44c15d46"
-    },
-    "rematch": {
-      "Package": "rematch",
-      "Version": "1.0.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "c66b930d20bb6d858cd18e1cebcfae5c"
-    },
-    "rematch2": {
-      "Package": "rematch2",
-      "Version": "2.1.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "76c9e04c712a05848ae7a23d2f170a40"
-    },
-    "remotes": {
-      "Package": "remotes",
-      "Version": "2.2.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "430a0908aee75b1fcba0e62857cab0ce"
->>>>>>> Create EDA and apply woe transformer
     },
     "renv": {
       "Package": "renv",
@@ -1316,13 +856,6 @@
       "Repository": "CRAN",
       "Hash": "1c3ef87cbb81c23ac96797781ec7aecc"
     },
-    "reprex": {
-      "Package": "reprex",
-      "Version": "0.3.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "b06bfb3504cc8a4579fd5567646f745b"
-    },
     "reshape2": {
       "Package": "reshape2",
       "Version": "1.4.4",
@@ -1330,21 +863,12 @@
       "Repository": "CRAN",
       "Hash": "bb5996d0bd962d214a11140d77589917"
     },
-<<<<<<< HEAD
     "rio": {
       "Package": "rio",
       "Version": "0.5.16",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "4a9aecbe83639be364de13ffe0671bcf"
-=======
-    "rex": {
-      "Package": "rex",
-      "Version": "1.2.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "093584b944440c5cd07a696b3c8e0e4c"
->>>>>>> Create EDA and apply woe transformer
     },
     "rlang": {
       "Package": "rlang",
@@ -1360,23 +884,6 @@
       "Repository": "CRAN",
       "Hash": "202260e1b2c410edc086d5b8f1ed946e"
     },
-<<<<<<< HEAD
-=======
-    "roxygen2": {
-      "Package": "roxygen2",
-      "Version": "7.1.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "fcd94e00cc409b25d07ca50f7bf339f5"
-    },
-    "rpart": {
-      "Package": "rpart",
-      "Version": "4.1-15",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "9787c1fcb680e655d062e7611cadf78e"
-    },
->>>>>>> Create EDA and apply woe transformer
     "rprojroot": {
       "Package": "rprojroot",
       "Version": "1.3-2",
@@ -1391,7 +898,6 @@
       "Repository": "CRAN",
       "Hash": "3924a1c20ce2479e89a08b0ca4c936c6"
     },
-<<<<<<< HEAD
     "rstatix": {
       "Package": "rstatix",
       "Version": "0.6.0",
@@ -1399,30 +905,12 @@
       "Repository": "CRAN",
       "Hash": "7eb4d25cb9f8183f0c9e19704a3cf681"
     },
-=======
->>>>>>> Create EDA and apply woe transformer
     "rstudioapi": {
       "Package": "rstudioapi",
       "Version": "0.11",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "33a5b27a03da82ac4b1d43268f80088a"
-    },
-<<<<<<< HEAD
-    "rvest": {
-      "Package": "rvest",
-      "Version": "0.3.6",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "a9795ccb2d608330e841998b67156764"
-=======
-    "rversions": {
-      "Package": "rversions",
-      "Version": "2.0.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "0ec41191f744d0f5afad8c6f35cc36e4"
->>>>>>> Create EDA and apply woe transformer
     },
     "rvest": {
       "Package": "rvest",
@@ -1438,8 +926,6 @@
       "Repository": "CRAN",
       "Hash": "6f76f71042411426ec8df6c54f34e6dd"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
     "scatterplot3d": {
       "Package": "scatterplot3d",
       "Version": "0.3-41",
@@ -1447,8 +933,6 @@
       "Repository": "CRAN",
       "Hash": "0d3e8c286b735517c2df4ed48848e732"
     },
-=======
->>>>>>> Stashed changes
     "selectr": {
       "Package": "selectr",
       "Version": "0.4-2",
@@ -1456,7 +940,13 @@
       "Repository": "CRAN",
       "Hash": "3838071b66e0c566d55cc26bd6e27bf4"
     },
-<<<<<<< Updated upstream
+    "shades": {
+      "Package": "shades",
+      "Version": "1.4.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "3a2cf5eecb2cbca814d01d56bfb51494"
+    },
     "shape": {
       "Package": "shape",
       "Version": "1.4.4",
@@ -1477,34 +967,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "5b229273695937933bc21ef235e84962"
-=======
-=======
->>>>>>> Stashed changes
-    "sessioninfo": {
-      "Package": "sessioninfo",
-      "Version": "1.1.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "308013098befe37484df72c39cf90d6e"
-    },
-    "shades": {
-      "Package": "shades",
-      "Version": "1.4.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "3a2cf5eecb2cbca814d01d56bfb51494"
-    },
-    "sp": {
-      "Package": "sp",
-      "Version": "1.4-2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-<<<<<<< Updated upstream
-      "Hash": "56b0039f97882b0627defddd4375dcce"
->>>>>>> Create EDA and apply woe transformer
-=======
-      "Hash": "3290eebc34ba4df5e213878d54c1e623"
->>>>>>> Stashed changes
     },
     "stringi": {
       "Package": "stringi",
@@ -1562,26 +1024,6 @@
       "Repository": "CRAN",
       "Hash": "6ea435c354e8448819627cf686f66e0a"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
-=======
-    "tidyverse": {
-      "Package": "tidyverse",
-      "Version": "1.3.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "bd51be662f359fa99021f3d51e911490"
-    },
->>>>>>> Stashed changes
-    "timeDate": {
-      "Package": "timeDate",
-      "Version": "3043.102",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "fde4fc571f5f61978652c229d4713845"
-    },
->>>>>>> Create EDA and apply woe transformer
     "tinytex": {
       "Package": "tinytex",
       "Version": "0.25",
@@ -1589,8 +1031,6 @@
       "Repository": "CRAN",
       "Hash": "a4b9662282097d1033c60420dcb83350"
     },
-<<<<<<< HEAD
-=======
     "treemapify": {
       "Package": "treemapify",
       "Version": "2.5.3",
@@ -1598,14 +1038,6 @@
       "Repository": "CRAN",
       "Hash": "1394a8f67dd47f10cb74fd6516bb36d8"
     },
-    "usethis": {
-      "Package": "usethis",
-      "Version": "1.6.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "e1985f5a9985fea2e338fa7eb99018ca"
-    },
->>>>>>> Create EDA and apply woe transformer
     "utf8": {
       "Package": "utf8",
       "Version": "1.1.4",
@@ -1620,10 +1052,6 @@
       "Repository": "CRAN",
       "Hash": "5ba3006888ac62fd5e97b208d00d3317"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
->>>>>>> Stashed changes
     "viridis": {
       "Package": "viridis",
       "Version": "0.5.1",
@@ -1631,11 +1059,6 @@
       "Repository": "CRAN",
       "Hash": "6f6b49e5b3b5ee5a6d0c28bf1b4b9eb3"
     },
-<<<<<<< Updated upstream
-=======
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "viridisLite": {
       "Package": "viridisLite",
       "Version": "0.3.0",
@@ -1643,21 +1066,12 @@
       "Repository": "CRAN",
       "Hash": "ce4f6271baa94776db692f1cb2055bee"
     },
-<<<<<<< HEAD
     "webshot": {
       "Package": "webshot",
       "Version": "0.5.2",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "e99d80ad34457a4853674e89d5e806de"
-=======
-    "whisker": {
-      "Package": "whisker",
-      "Version": "0.4",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ca970b96d894e90397ed20637a0c1bbe"
->>>>>>> Create EDA and apply woe transformer
     },
     "withr": {
       "Package": "withr",
@@ -1666,24 +1080,6 @@
       "Repository": "CRAN",
       "Hash": "ecd17882a0b4419545691e095b74ee89"
     },
-<<<<<<< Updated upstream
-<<<<<<< HEAD
-=======
-    "woe": {
-      "Package": "woe",
-      "Version": "0.3",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteRepo": "riv",
-      "RemoteUsername": "tomasgreif",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "43fcf268937e3b826a7f9dbc6be92b2f0d9a531a",
-      "Hash": "790f669ced4cb6ca608ee1e4356377a6"
-    },
->>>>>>> Create EDA and apply woe transformer
-=======
->>>>>>> Stashed changes
     "xfun": {
       "Package": "xfun",
       "Version": "0.16",
@@ -1698,21 +1094,12 @@
       "Repository": "CRAN",
       "Hash": "d4d71a75dd3ea9eb5fa28cc21f9585e2"
     },
-<<<<<<< HEAD
     "xts": {
       "Package": "xts",
       "Version": "0.12-0",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "cae1f4b14c523f62b61276fb3962d4fb"
-=======
-    "xopen": {
-      "Package": "xopen",
-      "Version": "1.0.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "6c85f015dee9cc7710ddd20f86881f58"
->>>>>>> Create EDA and apply woe transformer
     },
     "yaml": {
       "Package": "yaml",
@@ -1720,7 +1107,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "2826c5d9efb0a88f657c7a679c7106db"
-<<<<<<< HEAD
     },
     "zip": {
       "Package": "zip",
@@ -1735,8 +1121,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "c2ea03282caa1f6972dc84fc5bf671cc"
-=======
->>>>>>> Create EDA and apply woe transformer
     }
   }
 }

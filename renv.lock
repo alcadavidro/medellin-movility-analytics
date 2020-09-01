@@ -331,6 +331,13 @@
       "Repository": "CRAN",
       "Hash": "018b2fc43cb25d9f07241986c53fbf8e"
     },
+    "e1071": {
+      "Package": "e1071",
+      "Version": "1.7-3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "728e85416ffc90743054c1ac04486d69"
+    },
     "ellipse": {
       "Package": "ellipse",
       "Version": "0.4.2",
@@ -960,6 +967,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "9787c1fcb680e655d062e7611cadf78e"
+    },
+    "rpart.plot": {
+      "Package": "rpart.plot",
+      "Version": "3.0.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "2875d540fb4b5ef80dc1b5a796d488ec"
     },
     "rprojroot": {
       "Package": "rprojroot",

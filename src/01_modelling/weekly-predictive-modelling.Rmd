@@ -1,0 +1,638 @@
+---
+title: "weekly-predictive-modelling"
+author:
+  - name: "Alejandro Cadavid Romero"
+    email: alcadavidro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+  - name: "Santiago Vasquez Rodriguez"
+    email: svasquezro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introducción
+
+Este documento hace parte del trabajo del curso de **Analítica Predictiva** de la Universidad Nacional de Colombia para la Maestría en Ingeniería y Especialización en Analítica. El alcance de este es la creación de modelos predictivos para la estimación de cantidad de accidentes en el valle del aburra a nivel semanal.  
+
+### Carga de librerias
+```{r loading-libraries}
+# Manipulación de datos
+library(dplyr)
+library(tidyr)
+library(lubridate)
+
+# Data modelling
+library(recipes)
+library(Metrics)
+library(glmnet)
+library(caret)
+library(MASS)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+
+# Visualización
+library(ggplot2)
+
+# Formato tablas
+library(kableExtra)
+```
+
+
+### Carga de datos  
+```{r loading-data}
+df_train <- read.csv('../../data/processed/train_data.csv')
+df_test <- read.csv('../../data/processed/test_data.csv')
+special_dates_train <- read.csv('../../data/processed/special_date_monthly_2017.csv')
+special_dates_test <- read.csv('../../data/processed/special_date_monthly_2018.csv')
+```
+
+```{r data-train-viz}
+kable(head(df_train)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+# Armado del conjunto de datos  
+Debido a que se deben armar ciertas agregaciones a nivel de conjunto de datos antes de crear los datasets de entrenamiento, se incluye una etapa de armado del conjunto de variables, no está asociado directamente con la limpieza de los datos. La base que se construye a continuación serán los cimientos para el modelo semanal.  
+
+```{r}
+df <- rbind(
+  df_train,
+  df_test
+)
+special_dates_train <- special_dates_train %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+special_dates_test <- special_dates_test %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+
+special_dates <- rbind(
+  special_dates_train,
+  special_dates_test
+)
+
+df <- merge(df, special_dates, by = c("PERIODO", "MES", "DIA"))
+
+kable(head(df)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+
+```
+
+
+# Modelado semanal
+## Clase choque
+### Preprocesamiento de datos  
+
+Para el preprocesamiento de datos, se tiene en cuenta variables como rezagos de accidentes de la última semana de todas las clases y gravedades y las últimas 2 y 3 semanas de la clase de interes, al igual que accidentes en días como domingos y número de días festivos y/o especiales en la semana de interes.  
+```{r}
+df <- df %>%
+  mutate(SEMANA=week(FECHA))
+special_dates <- special_dates %>% 
+  mutate(
+    FECHA = as_date(paste(
+      PERIODO, 
+      formatC(MES, width = 2, flag = 0),
+      formatC(DIA, width = 2, flag = 0),
+      sep='-'
+      ))
+  ) %>% 
+  mutate(
+    SEMANA=week(FECHA)
+  )
+
+armado_dataset_semanal <- function(df, objective_var){
+  # conjunto de datos semanal por clase
+  accidentes_por_clase <- df %>% 
+    group_by(PERIODO, SEMANA, CLASE) %>% 
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(CLASE, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), SEMANA_LEAD=lead(SEMANA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, SEMANA, rank)) 
+  
+  # conjunto de datos semanal por gravedad
+  accidentes_por_gravedad <- df %>% 
+    group_by(PERIODO, SEMANA, GRAVEDAD) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(GRAVEDAD, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), SEMANA_LEAD=lead(SEMANA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, SEMANA, rank))
+  
+  # rezagos de la clase
+  rezagos_accidentes <- df %>% 
+    filter(CLASE == objective_var) %>% 
+    group_by(PERIODO, SEMANA) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>%
+    mutate(
+      t_minus_1=lag(n_accidentes, n = 1),
+      t_minus_2=lag(n_accidentes, n = 2),
+      t_minus_3=lag(n_accidentes, n = 3)
+    ) %>% 
+    dplyr::select(PERIODO, SEMANA, t_minus_2, t_minus_3) 
+  
+  # Accidentes en los domingos
+  domingos <- df %>% 
+    mutate(domingo = ifelse(DIA_NOMBRE == "domingo  ", 1, 0)) %>% 
+    group_by(PERIODO, SEMANA) %>% 
+    summarise(accidentes_domingo=sum(domingo), .groups="drop") %>% 
+    mutate(PERIODO_LEAD=lead(PERIODO), SEMANA_LEAD=lead(SEMANA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>% 
+    dplyr::select(-c(PERIODO, SEMANA, rank))
+  
+  
+  # fechas especiales
+  fechas_especiales <- special_dates %>% 
+    group_by(PERIODO, SEMANA) %>% 
+    summarise(
+      dias_festivos=sum(DIA_FESTIVO),
+      dias_especiales=sum(FECHA_ESPECIAL),
+      dias_festivos_especiales=sum(FESTIVO_FECHA_ESPECIAL),
+      .groups="drop"
+    )
+  
+  df_processed <- df %>%
+    filter(CLASE == objective_var) %>%
+    group_by(PERIODO, SEMANA) %>% 
+    summarise(
+      numero_accidentes = n(),
+      .groups="drop"
+    ) %>% 
+    mutate(
+      SEMANA=factor(SEMANA)
+      ) %>% 
+    merge(accidentes_por_clase,
+          by.x = c("PERIODO", "SEMANA"), by.y = c("PERIODO_LEAD", "SEMANA_LEAD"), all.x = T) %>%
+    merge(accidentes_por_gravedad, by.x = c("PERIODO", "SEMANA"), by.y = c("PERIODO_LEAD", "SEMANA_LEAD"), all.x = T) %>%
+    merge(rezagos_accidentes, by = c("PERIODO", "SEMANA"), all.x = T) %>%
+    merge(domingos, by.x = c("PERIODO", "SEMANA"), by.y = c("PERIODO_LEAD", "SEMANA_LEAD"), all.x = T) %>% 
+    replace_na(list(incendio=0, muerto=0)) %>%
+    filter(!is.na(t_minus_3)) %>%
+    merge(fechas_especiales, by = c("PERIODO", "SEMANA")) %>% 
+    arrange(PERIODO, SEMANA, .by_group = T)
+  
+  return(df_processed)
+}
+```  
+
+Se procede a realizar la construcción del conjunto de datos para la clase choque y hacer todo el pipeline de preprocesamiento para implementar el escalado y estandarización al conjunto de entrenamiento y validación.  
+```{r}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "choque")
+df_choque_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_choque_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.choque.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_choque_train)
+model.choque.steps <- model.choque.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.choque.prepared <- prep(model.choque.steps, training = df_choque_train)
+df_choque_train <- bake(model.choque.prepared, df_choque_train)
+df_choque_test <- bake(model.choque.prepared, df_choque_test)
+```  
+
+### Modelamiento  
+#### Regresión lineal simple  
+Como primer intento, vale la pena evaluar un modelo de regresión lineal simple con stepwise variable selection para descartar variables que no entreguen valor.  
+```{r}
+modelo.choque <- lm(numero_accidentes ~ ., data=df_choque_train)
+step.model.choque <- stepAIC(modelo.choque, direction = "both", trace = F, steps = 2000)
+
+model.choque.summary <- summary(step.model.choque)
+model.choque.summary
+```
+
+```{r}
+plot_estimation_errors <- function(y_true, y_pred, title){
+  min_value <- min(y_true, y_pred) - min(y_true, y_pred) * 0.1
+  max_value <- max(y_true, y_pred) + max(y_true, y_pred) * 0.1
+  
+  plot(x=y_true,y=y_pred,
+       ylab="Predicciones",xlab="Observados",
+       xlim=c(min_value, max_value),ylim=c(min_value, max_value),
+       las=1, cex=1, pch=16,
+       main=title)
+  abline(a=0,b=1,lwd=2,col="black", lty=2)
+  R_vl<-cor(y_pred, y_true)
+  R_vl<-format(R_vl, digits = 3, nsmall = 3)
+  rmse_vl<- rmse(actual = y_true, predicted = y_pred)
+  rmse_vl<-format(rmse_vl,digits = 3,nsmall = 2)
+  grid()
+  legend("topleft",legend=paste0(c("Correlación: ","RMSE: "),c(R_vl,rmse_vl)), bty="n")
+}
+```
+
+```{r}
+y_pred <- exp(predict(step.model.choque, df_choque_train))
+y_true <- exp(df_choque_train$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal choque ~ Entrenamiento"
+  )
+```
+
+De primera instancia, se observa un muy buen ajuste de los datos de entrenamiento respecto al modelo de regresión lineal, sin embargo, para evaluar su capacidad de generalizar es necesario evaluarlo en el conjunto de validación.  
+
+```{r}
+y_pred <- exp(predict(step.model.choque, df_choque_test))
+y_true <- exp(df_choque_test$numero_accidentes)
+
+test_rmse <- rmse(y_true, y_pred)
+
+test_train_ratio <- round(((test_rmse / train_rmse) - 1)*100, 3)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo mensual semanal ~ Validación"
+  )
+```
+Para el conjunto de validación, se puede ver un buen ajuste del modelo, sin embargo, respecto al **rmse** de entrenamiento se tiene una variación del `r test_train_ratio`% lo cual genera indicios de sobrentrenamiento. Procedemos a comparar directamente las funciones de distribución de probabilidad de los errores de entrenamiento vs los de validación.  
+
+```{r}
+plot_errors_density <- function(model, train, y_train, test, y_test, title){
+  # data extraction
+  y_pred <- exp(predict(model, train))
+  y_true <- exp(y_train)
+  train_error <- y_true - y_pred
+  y_pred <- exp(predict(model, test))
+  y_true <- exp(y_test)
+  test_error <- y_true - y_pred
+  #errors dataframe
+  errors_df <- data.frame(
+    errors = c(train_error, test_error),
+    error_type = c(
+      rep("train", length(train_error)),
+      rep("test", length(test_error))
+    )
+  )
+  # plotting
+  ggplot(errors_df, aes(x=errors, color=error_type)) +
+    geom_density() + 
+    theme_classic() + 
+    ggtitle(title) + 
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+plot_errors_density(
+  model = step.model.choque, 
+  train = df_choque_train, 
+  y_train = df_choque_train$numero_accidentes,
+  test = df_choque_test, 
+  y_test = df_choque_test$numero_accidentes,
+  title="Errores de entrenamiento y validación"
+  )
+
+```
+
+No se ven diferencias significativas, lo que si es claro es que el modelo en el conjunto de validación tiende a sobreestimar algunas observaciones por lo que se ve que la media no está centrada en cero sino que se ve levemente desplazada hacia la izquierda al igual que la función de distribución de probabilidad una mayor concentración de la masa a la izquierda.  
+Debido a esto, procedemos a utilizar métodos de regularización para realizar una selección de variables más adecuada.  
+
+#### Regresión Lasso  
+```{r}
+train_lasso_model <- function(df_train, df_test, min_lambda=-2){
+  # Construcción del dataset
+  x_train <- model.matrix(numero_accidentes~. , df_train)[,-1]
+  y_train <- df_train$numero_accidentes
+  
+  # malla de lambdas a probar
+  lambda_seq <- 10^seq(2, min_lambda, by = -.1)
+  
+  # modelado
+  set.seed(42)
+  cv.lasso <- cv.glmnet(x_train, y_train,
+                        alpha = 1,
+                        lambda = lambda_seq, 
+                        nfolds = 5)
+  
+  lasso.model <- glmnet(x_train, y_train, alpha = 1, lambda = cv.lasso$lambda.min)  
+  
+  y_train_pred <- predict(lasso.model, x_train)
+  train_rmse <- rmse(exp(y_train), exp(y_train_pred))
+  
+  
+  x_test <- model.matrix(numero_accidentes~. , df_test)[,-1]
+  y_test <- df_test$numero_accidentes
+  y_test_pred <- predict(lasso.model, x_test)
+  
+  test_rmse <- rmse(exp(y_test), exp(y_test_pred))
+  
+  response=list(
+    "training"=list(
+      "data"=x_train,
+      "response"=y_train,
+      "predictions"=y_train_pred,
+      "rmse"=train_rmse
+    ),
+    "validation"=list(
+      "data"=x_test,
+      "response"=y_test,
+      "predictions"=y_test_pred,
+      "rmse"=test_rmse
+    ),
+    "model"=lasso.model
+  )
+  return(response)
+}
+```
+
+
+```{r}
+lasso.choque.results <- train_lasso_model(df_train = df_choque_train, df_test = df_choque_test)
+
+plot_estimation_errors(
+  y_true = exp(lasso.choque.results$training$response), 
+  y_pred = exp(lasso.choque.results$training$predictions), 
+  title="Rendimiento de modelo mensual choque ~ Entrenamiento"
+  )
+```
+
+```{r}
+plot_estimation_errors(
+  y_true = exp(lasso.choque.results$validation$response), 
+  y_pred = exp(lasso.choque.results$validation$predictions), 
+  title="Rendimiento de modelo mensual choque ~ Validación"
+  )
+
+test_train_ratio <- round((lasso.choque.results$validation$rmse / lasso.choque.results$training$rmse -1 )*100, 3) 
+
+```  
+
+Para el modelo de lasso en la clase choque, la variación del rmse de validación respecto a entrenamiento es de un `r test_train_ratio` lo cual es cercano al 15%, por lo que procedemos a comparar las fpd de los errores de entrenamiento y validación.  
+
+```{r}
+plot_errors_density(
+  model = lasso.choque.results$model, 
+  train = lasso.choque.results$training$data, 
+  y_train = lasso.choque.results$training$response,
+  test = lasso.choque.results$validation$data, 
+  y_test = lasso.choque.results$validation$response,
+  title="Errores de entrenamiento y validación"
+  )
+```  
+
+Se puede evidenciar que ambas distribuciones son muy similares, sin embargo una leve diferencia en las medias. De esto, nos queda que el modelo más apropiado es el de lasso para la clase choque.  
+
+### Clase atropello
+#### Regresión Lasso  
+
+```{r}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "atropello")
+df_atropello_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_atropello_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.atropello.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_atropello_train)
+model.atropello.steps <- model.atropello.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.atropello.prepared <- prep(model.atropello.steps, training = df_atropello_train)
+df_atropello_train <- bake(model.atropello.prepared, df_atropello_train)
+df_atropello_test <- bake(model.atropello.prepared, df_atropello_test)
+```  
+
+```{r}
+lasso.atropello.results <- train_lasso_model(df_train = df_atropello_train, df_test = df_atropello_test, min_lambda = -3)
+
+plot_estimation_errors(
+  y_true = exp(lasso.atropello.results$training$response), 
+  y_pred = exp(lasso.atropello.results$training$predictions), 
+  title="Rendimiento de modelo mensual atropello ~ Entrenamiento"
+  )
+```
+
+```{r}
+plot_estimation_errors(
+  y_true = exp(lasso.atropello.results$validation$response), 
+  y_pred = exp(lasso.atropello.results$validation$predictions), 
+  title="Rendimiento de modelo mensual atropello ~ Validación"
+  )
+
+test_train_ratio <- round((lasso.atropello.results$validation$rmse / lasso.atropello.results$training$rmse -1 )*100, 3) 
+```
+```{r}
+plot_errors_density(
+  model = lasso.atropello.results$model, 
+  train = lasso.atropello.results$training$data, 
+  y_train = lasso.atropello.results$training$response,
+  test = lasso.atropello.results$validation$data, 
+  y_test = lasso.atropello.results$validation$response,
+  title="Errores de entrenamiento y validación"
+  )
+```  
+
+Para el modelo de atropellos, se ve una deficiencia en la calidad de las predicciones, en especial para el conjutno de validación, donde es claro un sobreestimación de las observaciones, sin embargo, en terminos de RMSE, es un modelo que no posee una gran variación respecto al conjunto de entrenamiento.  
+
+### Clase caida ocupante
+#### Regresión Lasso  
+
+```{r}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "caida ocupante")
+df_caida_ocupante_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_caida_ocupante_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.caida_ocupante.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_caida_ocupante_train)
+model.caida_ocupante.steps <- model.caida_ocupante.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.caida_ocupante.prepared <- prep(model.caida_ocupante.steps, training = df_caida_ocupante_train)
+df_caida_ocupante_train <- bake(model.caida_ocupante.prepared, df_caida_ocupante_train)
+df_caida_ocupante_test <- bake(model.caida_ocupante.prepared, df_caida_ocupante_test)
+```  
+
+```{r}
+lasso.caida_ocupante.results <- train_lasso_model(df_train = df_caida_ocupante_train, df_test = df_caida_ocupante_test, min_lambda = -3)
+
+plot_estimation_errors(
+  y_true = exp(lasso.caida_ocupante.results$training$response), 
+  y_pred = exp(lasso.caida_ocupante.results$training$predictions), 
+  title="Rendimiento de modelo mensual caida_ocupante ~ Entrenamiento"
+  )
+```
+
+```{r}
+plot_estimation_errors(
+  y_true = exp(lasso.caida_ocupante.results$validation$response), 
+  y_pred = exp(lasso.caida_ocupante.results$validation$predictions), 
+  title="Rendimiento de modelo mensual caida_ocupante ~ Validación"
+  )
+
+test_train_ratio <- round((lasso.caida_ocupante.results$validation$rmse / lasso.caida_ocupante.results$training$rmse -1 )*100, 3) 
+```
+```{r}
+plot_errors_density(
+  model = lasso.caida_ocupante.results$model, 
+  train = lasso.caida_ocupante.results$training$data, 
+  y_train = lasso.caida_ocupante.results$training$response,
+  test = lasso.caida_ocupante.results$validation$data, 
+  y_test = lasso.caida_ocupante.results$validation$response,
+  title="Errores de entrenamiento y validación"
+  )
+```  
+
+Para caida ocupante, la variación del **RMSE** de validación respecto a entrenamiento es de un `r test_train_ratio`% lo cual es un buen indicativo de la capacidad de generalización del modelo. Adicional, las **FDP** de los errores de entrenamiento y validación no se diferencian mucho por lo que se ve que el modelo tiene un buen ajuste.  
+
+### Clase volcamiento
+#### Regresión Lasso  
+
+```{r}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "volcamiento")
+df_volcamiento_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_volcamiento_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.volcamiento.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_volcamiento_train)
+model.volcamiento.steps <- model.volcamiento.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.volcamiento.prepared <- prep(model.volcamiento.steps, training = df_volcamiento_train)
+df_volcamiento_train <- bake(model.volcamiento.prepared, df_volcamiento_train)
+df_volcamiento_test <- bake(model.volcamiento.prepared, df_volcamiento_test)
+```  
+
+
+```{r}
+lasso.volcamiento.results <- train_lasso_model(df_train = df_volcamiento_train, df_test = df_volcamiento_test, min_lambda = -2)
+
+plot_estimation_errors(
+  y_true = exp(lasso.volcamiento.results$training$response), 
+  y_pred = exp(lasso.volcamiento.results$training$predictions), 
+  title="Rendimiento de modelo mensual volcamiento ~ Entrenamiento"
+  )
+```
+
+```{r}
+plot_estimation_errors(
+  y_true = exp(lasso.volcamiento.results$validation$response), 
+  y_pred = exp(lasso.volcamiento.results$validation$predictions), 
+  title="Rendimiento de modelo mensual volcamiento ~ Validación"
+  )
+
+test_train_ratio <- round((lasso.volcamiento.results$validation$rmse / lasso.volcamiento.results$training$rmse -1 )*100, 3) 
+```
+```{r}
+plot_errors_density(
+  model = lasso.volcamiento.results$model, 
+  train = lasso.volcamiento.results$training$data, 
+  y_train = lasso.volcamiento.results$training$response,
+  test = lasso.volcamiento.results$validation$data, 
+  y_test = lasso.volcamiento.results$validation$response,
+  title="Errores de entrenamiento y validación"
+  )
+```  
+
+
+A pesar de que el modelo de volcamiento no posea una variación tan alta `r test_train_ratio`%, es evidente que el modelo se encuentra subestimando los datos, y el rango de las predicciones no es acorde al rango lo la variabilidad natural del fenomeno en estudio, es necesario profundizar para este modelo.  
+
+### Clase otros
+#### Regresión Lasso  
+
+```{r}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "otro")
+df_otro_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_otro_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.otro.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_otro_train)
+model.otro.steps <- model.otro.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.otro.prepared <- prep(model.otro.steps, training = df_otro_train)
+df_otro_train <- bake(model.otro.prepared, df_otro_train)
+df_otro_test <- bake(model.otro.prepared, df_otro_test)
+```  
+
+```{r}
+modelo.otro <- lm(numero_accidentes ~ ., data=df_otro_train)
+step.model.otro <- stepAIC(modelo.otro, direction = "both", trace = F, steps = 2000)
+
+model.otro.summary <- summary(step.model.otro)
+model.otro.summary
+```
+
+
+
+```{r}
+plot_estimation_errors(
+  y_true = exp(df_otro_train$numero_accidentes), 
+  y_pred = exp(predict(step.model.otro, df_otro_train)), 
+  title="Rendimiento de modelo mensual otro ~ Entrenamiento"
+  )
+```
+
+```{r}
+plot_estimation_errors(
+  y_true = exp(df_otro_test$numero_accidentes), 
+  y_pred = exp(predict(step.model.otro, df_otro_test)), 
+  title="Rendimiento de modelo mensual otro ~ Validación"
+  )
+```
+```{r}
+plot_errors_density(
+  model = step.model.otro, 
+  train = df_otro_train, 
+  y_train = df_otro_train$numero_accidentes,
+  test = df_otro_test, 
+  y_test = df_otro_test$numero_accidentes,
+  title="Errores de entrenamiento y validación"
+  )
+```  
+
+Claramente el modelo de otros con una regresión lineal muestra indicios de sobreentrenamiento, vamos a intentar con una regresión lasso.  
+
+```{r}
+lasso.otro.results <- train_lasso_model(df_train = df_otro_train, df_test = df_otro_test, min_lambda = -2)
+
+plot_estimation_errors(
+  y_true = exp(lasso.otro.results$training$response), 
+  y_pred = exp(lasso.otro.results$training$predictions), 
+  title="Rendimiento de modelo mensual otro ~ Entrenamiento"
+  )
+```
+
+```{r}
+plot_estimation_errors(
+  y_true = exp(lasso.otro.results$validation$response), 
+  y_pred = exp(lasso.otro.results$validation$predictions), 
+  title="Rendimiento de modelo mensual otro ~ Validación"
+  )
+
+test_train_ratio <- round((lasso.otro.results$validation$rmse / lasso.otro.results$training$rmse -1 )*100, 3) 
+```
+```{r}
+plot_errors_density(
+  model = lasso.otro.results$model, 
+  train = lasso.otro.results$training$data, 
+  y_train = lasso.otro.results$training$response,
+  test = lasso.otro.results$validation$data, 
+  y_test = lasso.otro.results$validation$response,
+  title="Errores de entrenamiento y validación"
+  )
+```  
+
+Aunque la variación del **RMSE** de entrenamiento a validación para la regresión lasso es menor que la regresión lineal, claramente el modelo está sobreestimando varias de las observaciones.  
+Se hace necesario evaluar nuevos modelos para está clase de accidentes.  
+
+## Conclusiones  
+
+Los modelos semanales tuvieron un buen desempeño a nivel general, a excepeción de los modelos de **volcamiento** y **otros**, los cuales sufrieron de tener rangos muy cerrados de estimación, por lo que no tienen en cuenta toda la variabilidad total del fenomeno de estudio. Es importante explorar nuevas variables que le permitan a los modelos capturar la variabilidad de estás clases.  

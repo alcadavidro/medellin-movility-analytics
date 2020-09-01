@@ -1,5 +1,5 @@
 ---
-title: "Predictive-modelling per accident class"
+title: "Medellins monthly predictive modelling per accident class"
 author:
   - name: "Alejandro Cadavid Romero"
     email: alcadavidro@unal.edu.co

@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/655339/2cb7f83f5346466082484e1adca2b527
+bundleId: https://api.rpubs.com/api/v1/document/655339/2cb7f83f5346466082484e1adca2b527
+url: http://rpubs.com/santy1129/655339
+when: 1599175178.21745

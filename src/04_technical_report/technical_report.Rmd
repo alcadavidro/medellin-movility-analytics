@@ -1,0 +1,1961 @@
+---
+title: "Technical Report"
+author:
+  - name: "Alejandro Cadavid Romero"
+    email: alcadavidro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+  - name: "Santiago Vasquez Rodriguez"
+    email: svasquezro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introducción
+
+Este documento hace parte del trabajo del curso de **Analítica Predictiva** de la Universidad Nacional de Colombia para la Maestría en Ingeniería y Especialización en Analítica. El alcance de este documento reporta de manera técnica el paso a paso que se llevó a cabo para la consolidación del proyecto final del curso.
+
+La manera en que se espera abordar este documento técnico es la de ir recorriendo las diferentes etapas de todo el proceso del proyecto (*exploratory descriptive analysis*, *preprocessing data* y *clustering*,*predictive model*) e ir evidenciando aquellos hechos, tesis, supuestos y resultados obtenidos de cada una de estas etapas e ir conectando estos hallazgos con cada uno de los siguientes procesos. En suma, este documento para el lector constituye una hoja de ruta que demarca los diferentes pasos realizados y como cada uno entrelazado llega a unos resultados finales.
+
+
+```{r loading-libraries, include=FALSE}
+# Manipulación de datos
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(lubridate)
+library(na.tools)
+library(factoextra)
+library(clustertend)
+library(fastDummies)
+
+# Data modelling
+library(recipes)
+library(Metrics)
+library(glmnet)
+library(caret)
+library(MASS)
+
+# Visualización
+library(ggplot2)
+
+# Formato tablas
+library(kableExtra)
+
+# Análisis geoespacial
+library(geosphere)
+library(leaflet)
+
+```
+
+
+### Carga de datos
+
+La primera consideración a tener en cuenta son las fuentes de datos utilizadas para el proceso. Inicialmente se tenian las fuentes primarias y obligatoris para el proceso: Datos de [Accidentalidad Georeferenciada](https://geomedellin-m-medellin.opendata.arcgis.com/search?tags=movilidad) para el periodo 2014-2018.
+Son con estos datos que se realiza la etapa de exploración así como el clustering. Posteriormente en la etapa de modelado se tienen en cuenta otros datos que fueron incluidos, pero, para efectos prácticos se describirán cuando se haga mención a la parte de los modelos predictivos. Por los pronto solo se evidencian los datos iniciales.
+
+
+```{r loading-data, include=FALSE}
+df_train <- read.csv('./data/processed/train_data.csv')
+df_test <- read.csv('./data/processed/test_data.csv')
+df <- rbind(df_train, df_test)
+special_dates_train <- read.csv('./data/processed/special_date_monthly_2017.csv')
+special_dates_test <- read.csv('./data/processed/special_date_monthly_2018.csv')
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+special_dates_train <- special_dates_train %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+special_dates_test <- special_dates_test %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+```
+
+
+```{r data-train-viz, echo=FALSE, message=TRUE, warning=TRUE}
+kable(head(df_train)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+
+La primera etapa del proceso que se comenzó a construir fue el *exploratory descriptive analysis* del cual se derivaron varios análisis relevantes. Uno de ellos que para la variable **barrio** no se tienen todos los datos, cerca del 8.6% de los datos totales son vacíos al igual que es una variable con muchos labels. Esto por suspuesto era de esperarse toda vez que son muchos los barrios para la ciudad de Medellin, esto tambien sucede para **direccion**, **comuna**, **latitud** y **longuitud** como se evidencia a continuación:
+
+```{r neighborhood exploration, echo=FALSE, message=FALSE, warning=FALSE}
+df %>%
+  group_by(BARRIO) %>% 
+  summarise(
+    FRECUENCIA=n(),
+    PROPORCION=round(n()/nrow(df), 3),
+    .groups="drop") %>%
+  arrange(desc(FRECUENCIA), .by_group=T) %>%
+  top_n(10) %>%
+  kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```  
+
+Como se puede observar, 19766 observaciones, no tienen el **barrio** asociado donde ocurrió el siniestro. Entendiendo esto como una cantidad importante de los datos, se procede a realizar una imputación por distancia acorde a la latitud y longitud de esos registros y los centroides de estas dos variables de los registros que sí poseen información.
+
+Antes de esto, se valida la completitud de las columnas de latitud y longitud de los datos.
+
+
+```{r lat-lng analysis, echo=FALSE, message=FALSE, warning=FALSE}
+rbind(df %>%
+        dplyr::select(LATITUD, LONGITUD) %>%
+        summarise(
+          na_values=sum(is.na(LATITUD)),
+          avg=round(mean(LATITUD),5),
+          std=round(sd(LATITUD),5),
+          min_value=round(min(LATITUD),5),
+          max_value=round(max(LATITUD),5),
+          .groups="drop"
+          ),
+      df %>%
+        dplyr::select(LATITUD, LONGITUD) %>%
+        summarise(
+          na_values=sum(is.na(LONGITUD)),
+          avg=round(mean(LONGITUD),5),
+          std=round(sd(LONGITUD),5),
+          min_value=round(min(LONGITUD),5),
+          max_value=round(max(LONGITUD),5),
+          .groups="drop"
+          )
+    ) %>%
+  t() %>% data.frame() %>%
+  rename(LATITUD=X1, LONGITUD=X2) %>%
+  kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```
+
+No obstante, al indagar un poco más sobre los diferentes labels para **barrio** se observó que hay algunos otros barrio que están etiquetados con números (*0*, *6001*, *7001*, *9004* y *9086*). Al investigar si estos hacen alusión quizás al código postal del barrio estos números no equivalen a ningún código postal. De esta manera y en adelante, se procede a excluir estos datos del análisis de clustering y del eda. 
+
+```{r echo=FALSE, message=TRUE, warning=FALSE}
+centroides_barrios <- df %>% 
+  dplyr::select(BARRIO, LATITUD, LONGITUD) %>%
+  filter((BARRIO %in% c("0", "6001", "7001", "9004", "9086"))) %>%
+  group_by(BARRIO) %>%
+  summarise(
+    N_ACCIDENTES=n(),
+    LNG=median(LONGITUD),
+    LAT=median(LATITUD),
+    .groups="drop_last"
+    ) %>%
+  arrange(desc(N_ACCIDENTES))
+
+centroides_barrios %>% top_n(15, N_ACCIDENTES) %>% kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```
+
+### Centroides de los barrios conocidos
+Una vez se realiza la exclusión de los datos mencionados se puede observar que, no hay valores extremos o atípicos dentro de la longitud y latitud, al igual que no hay valores nulos por lo que se puede proceder con la estrategia planteada de extraer el centroide de cada barrio de acuerdo a los accidentes, e imputar los valores de los barrios de acuerdo a la cercanía del registro del accidente con los centroides de los barrios. Para esto, se usará la distancia de haversine entre dos puntos.
+
+```{r centroids calculation, echo=FALSE, message=FALSE, warning=FALSE}
+centroides_barrios <- df %>% 
+  dplyr::select(BARRIO, LATITUD, LONGITUD) %>%
+  filter(!(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086"))) %>%
+  group_by(BARRIO) %>%
+  summarise(
+    N_ACCIDENTES=n(),
+    LNG=median(LONGITUD),
+    LAT=median(LATITUD),
+    .groups="drop_last"
+    ) %>%
+  arrange(desc(N_ACCIDENTES))
+
+centroides_barrios %>% top_n(15, N_ACCIDENTES) %>% kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```
+
+
+A continuación, se visualizarán los centroides de los barrios de acuerdo a los registros de los accidentes.
+
+
+```{r Visualización de los centroides, echo=FALSE, message=FALSE, warning=FALSE}
+centroides_barrios %>% 
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(
+    clusterOptions = markerClusterOptions(),
+  ) %>% 
+  setView(lng = mean(centroides_barrios$LNG), lat = mean(centroides_barrios$LAT), zoom = 11)
+```
+
+Lo primero que se observa en los centroides de los barrios, es que hay 2 barrios, específicamente los cercanos a **San Felix** y otros hacia el oriente del área metropolitana que se encuentran muy lejos de la densidad de accidentes. Por otro lado, hay otros 14 barrios cercanos a **San Antonio de Prado**, lo cual ya se encuentra cerca del borde del área metropolitana, con lo cual hace cuestionar la calidad y la validez de estos datos. Sin bien estos corregimientos hacen parte del municipio de **Medellín** hace razonable que se detenga un poco para indagar sobre esto mismo.
+
+Ahora, teniendo la tabla de referencia de la *latitud* y la *longitud* para los barrios conocidos, se usa la fórmula del [semiverseno](https://es.linkfang.org/wiki/F%C3%B3rmula_del_semiverseno) para calcular la distancia espacial entre los centroides de los barrios conocidos y las coordenadas de los registros que no tienen barrio. Una vez computada estas distancias, se toma las coordenadas con menor distancia y se asigna ese barrio.
+
+
+```{r imputación de barrios min value, echo=FALSE, message=FALSE, warning=FALSE}
+asignacion_barrios <- function(df_barrios, centroides_referencia){
+  barrios <- c()
+  for (i in 1:nrow(df_barrios)){
+    idx <- which.min(distHaversine(
+      p1 = df_barrios[i, ],
+      p2 = centroides_referencia[,c(3, 4)])
+      )
+    barrio <- centroides_referencia[idx, 1] %>% unlist(., use.names = F)
+    barrios[i] <- barrio
+  }
+  return(barrios)
+}
+
+df_con_barrio <- df %>%
+  filter(!(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086")))
+
+df_sin_barrio <- df %>%
+  filter(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086"))
+
+df_lng_lat <- df_sin_barrio %>%
+  dplyr::select(LONGITUD, LATITUD)
+
+
+centroides_barrios <- as.data.frame(centroides_barrios)
+df_lng_lat <- as.data.frame(df_lng_lat)
+
+barrios <- asignacion_barrios(df_barrios = df_lng_lat, centroides_referencia = centroides_barrios)
+
+df_sin_barrio$BARRIO <- barrios
+```
+
+En el próximo mapa se logra visualizar que la mayoría de las asignaciones corresponden al barrio **la oculta** , el cual es un barrio de **San Antonio de Prado**. Lo que hace dudar bastante sobre la calidad del barrio como una variable que se deba tener en cuenta para el modelo.
+
+```{r barrios, echo=FALSE, message=FALSE, warning=FALSE}
+df_sin_barrio %>%
+  group_by(BARRIO) %>% 
+  summarise(
+    N_RECORDS=n(),
+    PROPORTION=(n()  / nrow(df_sin_barrio))*100,
+    .groups="drop_last"
+  ) %>% 
+  arrange(desc(N_RECORDS)) %>%
+  top_n(10) %>% kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```
+
+Además de esto, se observa que el punto donde ubica los resultados para **la oculta** es una amplia zona boscosa lo cual hace suponer que al tratar de imputar los barrios faltantes bajo esta metodología carecería de todo sustento creíble que haga al menos pensar que en esta zona tan apartada, distante y por su posición geográfica puedan si quiera transitar vehículo. De otra manera, si se quisiera obviar este hecho es inverosímil que se presente una tasa de incidentes viales tan alto (**19251**)
+
+
+```{r barrios-map-viz, echo=FALSE, message=FALSE, warning=FALSE}
+coordinates <- df_sin_barrio %>%
+  summarise(
+    mean_lat=mean(LATITUD),
+    mean_lng=mean(LONGITUD),
+    max_lat=max(LATITUD),
+    max_lng=max(LONGITUD),
+    min_lat=min(LATITUD),
+    min_lng=min(LONGITUD)
+  )
+
+leaflet() %>%
+  setView(lng = mean(df_con_barrio$LONGITUD), lat = mean(df_con_barrio$LATITUD), zoom= 11) %>%
+  addMarkers(
+    lng = coordinates$mean_lng,
+    lat = coordinates$mean_lat, 
+    label = "Media lat-lng de registros sin barrio", 
+    labelOptions = labelOptions(noHide = T, direction = "bottom", textOnly = T, style = list("font-size" = "13px", "font-weight" = "bold"))
+    ) %>%
+  addTiles()
+```
+
+
+Como parte de un experimento se prueba la imputacion no con los valores minimos (como en el apartado anterior) sino con los valores maximos. Los resultados para este analisis se visualizan a continuacion: 
+
+```{r imputación de barrios max value, echo=FALSE, message=FALSE, warning=FALSE}
+asignacion_barrios <- function(df_barrios, centroides_referencia){
+  barrios <- c()
+  for (i in 1:nrow(df_barrios)){
+    idx <- which.max(distHaversine(
+      p1 = df_barrios[i, ],
+      p2 = centroides_referencia[,c(3, 4)])
+      )
+    barrio <- centroides_referencia[idx, 1] %>% unlist(., use.names = F)
+    barrios[i] <- barrio
+  }
+  return(barrios)
+}
+
+df_con_barrio <- df %>%
+  filter(!(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086")))
+
+df_sin_barrio <- df %>%
+  filter(BARRIO %in% c("", "0", "6001", "7001", "9004", "", "9086"))
+
+df_lng_lat <- df_sin_barrio %>%
+  dplyr::select(LONGITUD, LATITUD)
+
+
+centroides_barrios <- as.data.frame(centroides_barrios)
+df_lng_lat <- as.data.frame(df_lng_lat)
+
+barrios <- asignacion_barrios(df_barrios = df_lng_lat, centroides_referencia = centroides_barrios)
+
+df_sin_barrio$BARRIO <- barrios
+```
+
+```{r barrios max, echo=FALSE, message=FALSE, warning=FALSE}
+df_sin_barrio %>%
+  group_by(BARRIO) %>% 
+  summarise(
+    N_RECORDS=n(),
+    PROPORTION=(n()  / nrow(df_sin_barrio))*100,
+    .groups="drop_last"
+  ) %>% 
+  arrange(desc(N_RECORDS)) %>%
+  top_n(10) %>% kable() %>% kable_styling(bootstrap_options = "striped", position = "left")
+```
+
+Se observa entonces que la distribución de los valores imputados son menos barrios para la imputación con los valores mínimos **piedra gorda**, **suburbano palmitas** y **el vergel**. Un hecho importante a resaltar de esto es que cuando se trata de imputar con los valores máximos de lat y lng estos valores se ubican en los corregimientos de Medellín mas hacia el norte.
+
+```{r barrios-max-viz, echo=FALSE, message=FALSE, warning=FALSE}
+coordinates <- df_sin_barrio %>%
+  summarise(
+    mean_lat=mean(LATITUD),
+    mean_lng=mean(LONGITUD),
+    max_lat=max(LATITUD),
+    max_lng=max(LONGITUD),
+    min_lat=min(LATITUD),
+    min_lng=min(LONGITUD)
+  )
+
+leaflet() %>%
+  setView(lng = mean(df_con_barrio$LONGITUD), lat = mean(df_con_barrio$LATITUD), zoom= 11) %>%
+  addMarkers(
+    lng = coordinates$max_lng,
+    lat = coordinates$max_lat, 
+    label = "Media lat-lng de registros sin barrio", 
+    labelOptions = labelOptions(noHide = T, direction = "bottom", textOnly = T, style = list("font-size" = "13px", "font-weight" = "bold"))
+    ) %>%
+  addTiles()
+```
+
+En consecuencia, considerando la calidad del análisis anterior, ésta imputación está altamente sesgada por la zona de los accidentes, lo cual se considera innecesario proceder con los barrios imputados con la oculta, con lo cual solo se toma en cuenta la imputación para el 3% restante
+
+### Centroides de las comunas conocidas  
+
+Después del [Exploratory Descriptive Analysis](https://rpubs.com/santy1129/654267), se evidenció que el problema de los barrios se extiende de igual forma a las comunas, pero viendo el mapa anterior donde el promedio de estos registros se encuentran en las afueras del área metropolitana, no es de extrañarse que estos faltantes o registros nulos se refieran al mismo caso. Sin embargo, hubo un porcentaje pequeño que si podía registrarse en el área, como fue el caso del 1.2% del subconjunto de datos (registros sin barrio). Volvemos a repetir los mismos pasos anteriores para hacer imputación, sin embargo, antes vamos a visualizar el promedio de la latitud y longitud y ubicarlo en un mapa.
+
+
+```{r comunas top 10 - bottom 10, echo=FALSE, message=FALSE, warning=FALSE}
+rbind(df %>%
+        group_by(COMUNA) %>%
+        summarise(
+          N_VALUES = n(),
+          .groups = "drop"
+        ) %>%
+        arrange(N_VALUES) %>% top_n(5),
+      df %>%
+        group_by(COMUNA) %>%
+        summarise(
+          N_VALUES = n(),
+          .groups = "drop"
+        ) %>% 
+        arrange(N_VALUES) %>% slice(1:5)) %>%
+  kable() %>% kable_styling(bootstrap_options = "striped", position = "left") 
+```  
+
+```{r comunas-map-viz, echo=FALSE, message=FALSE, warning=FALSE}
+coordinates <- df %>%
+  filter(COMUNA == "") %>% 
+  summarise(
+    mean_lat=mean(LATITUD),
+    mean_lng=mean(LONGITUD),
+    max_lat=max(LATITUD),
+    max_lng=max(LONGITUD),
+    min_lat=min(LATITUD),
+    min_lng=min(LONGITUD)
+  )
+
+leaflet() %>%
+  setView(lng = mean(df_con_barrio$LONGITUD), lat = mean(df_con_barrio$LATITUD), zoom= 11) %>%
+  addMarkers(
+    lng = coordinates$mean_lng,
+    lat = coordinates$mean_lat, 
+    label = "Media lat-lng de registros sin comuna", 
+    labelOptions = labelOptions(noHide = T, direction = "bottom", textOnly = T, style = list("font-size" = "13px", "font-weight" = "bold"))
+    ) %>%
+  addTiles()
+```  
+
+Debido a que se aplica el mismo método de imputación de **barrio** para **comuna**, este evidencia la ubicación del mismo que se halló para **barrio**. En consecuencia, y debido a que la clusterización se va hacer a nivel de barrio, se va dejar este campo vacío para los registros que no se tienen datos
+
+
+## Clustering de barrios de acuerdo a la accidentalidad  
+
+Antes de proceder a realizar el agrupamiento de los barrios en función de la accidentalidad, se debe hacer una exploración rápida de los accidentes en función del tiempo, para validar si el agrupamiento se debe hacer también en función del tiempo, como el año, o sobre todo el conjunto de datos sin discriminar el tiempo.
+
+Como se ve en el siguiente gráfico, el número de accidentes por año es muy *estable* a lo largo de los 5 años del análisis.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df <- setDT(df)
+
+tempo <- df[,.N,by='PERIODO']
+
+ggplot(tempo, aes(x= PERIODO,
+                  y = N,
+                  fill=PERIODO)) + 
+  geom_bar(position =  "dodge", stat='identity') +
+  geom_text(aes(label = N), 
+            position=position_dodge(width=0.9),
+            vjust=-0.25) +
+  labs(x='Periodo',
+       y='Número de accidentes', 
+       title = 'Valores por Periodo del accidente',
+       fill = 'Periodo del accidente') +
+  theme(legend.position = "none")
+```
+
+Tan para el análisis mensual como para el anual se observa que los días *domingo* se presentan menos accidentes en comparación con los demás días de la semana, esto bajo el supuesto que son días de ocio de las personas y el uso de los medios de transporte son menores. Así mismo, estos gráficos muestran que para todos los días con excepción para *domingo* todos los días tienen valores muy similares en cuanto al comportamiento anual y mensual.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+tempo <- df[,.N, by = .(DIA_NOMBRE,PERIODO)]
+
+ggplot(tempo, aes(x= PERIODO,y=N, group=DIA_NOMBRE, color=DIA_NOMBRE)) +
+  geom_line()+
+  facet_wrap(~DIA_NOMBRE, scales = "free_y") +
+    labs(x='Periodo del accidente',
+         title = "Comportamiento de accidentes anuales por dia de la semana") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(axis.text.x = element_text(angle = 25,vjust = 1, hjust=1), legend.position = "none") 
+```
+
+```{r echo=FALSE, message=TRUE, warning=TRUE}
+tempo <- df[,.N, by = .(DIA_NOMBRE,MES)]
+
+ggplot(tempo, aes(MES,y=N, group=DIA_NOMBRE, color=DIA_NOMBRE)) +
+  geom_line()+
+  facet_wrap(~DIA_NOMBRE, scales = "free_y") +
+    labs(x='Mes del accidente',
+         title = "Comportamiento de accidentes mensuales por dia de la semana") +
+  scale_y_continuous(~'Numero de accidentes') +
+  theme(legend.position = "none") +
+  scale_x_discrete(limit = factor(1:12))
+```
+
+```{r Analisis hora-año, echo=FALSE, message=FALSE, warning=FALSE}
+df <- df[,HORA:=hour(FECHA)]
+tempo <- df[,.N, by = c('HORA','PERIODO')]
+
+ggplot(tempo, aes(x=HORA,y=N, color=factor(PERIODO))) +
+  geom_line() +
+    labs(x='Hora del accidente',
+         y='Número de accidentes',
+         title = "Comportamiento de accidentes anuales por año",
+         color = 'Periodo') +
+  theme(legend.position = "right") +
+  scale_x_discrete(limit = factor(1:24))
+```
+
+Cuando se analiza el número de accidentes anuales por hora resalta que: El año **2015** parece tener un comportamiento diferente respecto a los demás años. Esto hace sugerir que es razonable realizar la clusterización diferenciada por año, toda vez que realizarlo de manera conjunta para todos los años podría generar resultados no tan robustos.
+
+### Cálculo de variables para agrupamiento de barrios por año
+
+En consecuencia con lo anterior, las variables para realizar la clusterización serán las siguientes:
+
+- Promedio de accidentes por mes  
+- Desviación estándar de accidentes por mes  
+- Total de accidentes por tipo de gravedad  
+- Total de accidentes por clase de accidente  
+- Total de accidentes por diseño de la vía donde ocurrió el accidente
+
+```{r Construcción de conjunto de datos, echo=FALSE, message=FALSE, warning=FALSE}
+
+metricas_accidentes_mes <- df %>%
+  filter(BARRIO != "") %>% 
+  group_by(BARRIO, PERIODO, MES) %>% 
+  summarise(
+    total_accidentes = n(),
+    .groups="drop"
+  ) %>% 
+  group_by(BARRIO, PERIODO) %>%
+  summarise(
+    PROMEDIO_ACCIDENTE_MES = mean(total_accidentes, na.rm = T),
+    STD_ACCIDENTES_MES = sd(total_accidentes, na.rm = T),
+    .groups="drop"
+  )
+
+metricas_variables_dummies <- df %>% 
+  fastDummies::dummy_cols(select_columns = c("CLASE", "GRAVEDAD", "DISENO")) %>% 
+  mutate(
+    DISENO_TUNEL_PUENTE = `DISENO_paso a nivel` + `DISENO_paso elevado` + `DISENO_paso inferior` + `DISENO_tunel` + `DISENO_puente` + `DISENO_ponton`
+  ) %>% 
+  filter(BARRIO!="") %>% 
+  rename(
+    OTRO_ACCIDENTE=CLASE_otro,
+    ATROPELLOS=CLASE_atropello,
+    CAIDA_OCUPANTE=`CLASE_caida ocupante`,
+    CHOQUE=CLASE_choque,
+    INCENDIO=CLASE_incendio,
+    VOLCAMIENTOS=CLASE_volcamiento,
+    HERIDO=GRAVEDAD_herido,
+    MUERTO=GRAVEDAD_muerto,
+    SOLO_DANOS=`GRAVEDAD_solo danos`,
+    SIN_DISENO=DISENO_,
+    CICLO_RUTA=`DISENO_ciclo ruta`,
+    GLORIETA=DISENO_glorieta,
+    INTERSECCION=DISENO_interseccion,
+    LOTE_PREDIO=`DISENO_lote o predio`,
+    TRAMO_VIDA=`DISENO_tramo de via`,
+    VIA_PEATOLNAL=`DISENO_via peatonal`
+  ) %>% 
+  group_by(BARRIO, PERIODO, MES) %>% 
+  summarise(
+    TOTAL_OTRO_ACCIDENTE = sum(OTRO_ACCIDENTE),
+    TOTAL_ATROPELLOS=sum(ATROPELLOS),
+    TOTAL_CAIDA_OCUPANTE=sum(CAIDA_OCUPANTE),
+    TOTAL_CHOQUE=sum(CHOQUE),
+    TOTAL_INCENDIO=sum(INCENDIO),
+    TOTAL_VOLCAMIENTOS=sum(VOLCAMIENTOS),
+    TOTAL_HERIDO=sum(HERIDO),
+    TOTAL_MUERTO=sum(MUERTO),
+    TOTAL_SOLO_DANOS=sum(SOLO_DANOS),
+    TOTAL_SIN_DISENO=sum(SIN_DISENO),
+    TOTAL_CICLO_RUTA=sum(CICLO_RUTA),
+    TOTAL_GLORIETA=sum(GLORIETA),
+    TOTAL_INTERSECCION=sum(INTERSECCION),
+    TOTAL_LOTE_PREDIO=sum(LOTE_PREDIO),
+    TOTAL_TRAMO_VIDA=sum(TRAMO_VIDA),
+    TOTAL_VIA_PEATOLNAL=sum(VIA_PEATOLNAL),
+    TOTAL_DISENO_TUNEL_PUENTE = sum(DISENO_TUNEL_PUENTE),
+    .groups="drop"
+  )  %>% 
+  group_by(BARRIO, PERIODO) %>%
+  summarise(
+    AVG_OTRO_ACCIDENTE = sum(TOTAL_OTRO_ACCIDENTE),
+    AVG_ATROPELLOS=sum(TOTAL_ATROPELLOS),
+    AVG_CAIDA_OCUPANTE=sum(TOTAL_CAIDA_OCUPANTE),
+    AVG_CHOQUE=sum(TOTAL_CHOQUE),
+    AVG_INCENDIO=sum(TOTAL_INCENDIO),
+    AVG_VOLCAMIENTOS=sum(TOTAL_VOLCAMIENTOS),
+    AVG_HERIDO=sum(TOTAL_HERIDO),
+    AVG_MUERTO=sum(TOTAL_MUERTO),
+    AVG_SOLO_DANOS=sum(TOTAL_SOLO_DANOS),
+    AVG_SIN_DISENO=sum(TOTAL_SIN_DISENO),
+    AVG_CICLO_RUTA=sum(TOTAL_CICLO_RUTA),
+    AVG_GLORIETA=sum(TOTAL_GLORIETA),
+    AVG_INTERSECCION=sum(TOTAL_INTERSECCION),
+    AVG_LOTE_PREDIO=sum(TOTAL_LOTE_PREDIO),
+    AVG_TRAMO_VIDA=sum(TOTAL_TRAMO_VIDA),
+    AVG_VIA_PEATOLNAL=sum(TOTAL_VIA_PEATOLNAL),
+    AVG_DISENO_TUNEL_PUENTE = sum(TOTAL_DISENO_TUNEL_PUENTE),
+    .groups="drop"
+  )
+
+cluster_df <- merge(metricas_accidentes_mes, metricas_variables_dummies, by = c("BARRIO", "PERIODO"))
+cluster_df_dim <- dim(cluster_df)
+```  
+
+De la construcción de variables del conjunto de datos inicial, resultamos con un conjunto de datos de `r cluster_df_dim[1]` observaciones por `r cluster_df_dim[2]` variables, sin embargo, al ser de nuestro interés hacer un clustering por año, el resultado son 5 conjuntos de datos con aproximadamente 315 observaciones por conjunto de datos. A continuación se puede visualizar la tabla resultante. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cluster_df %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover"), position = "left") %>%
+  scroll_box(height = "300px")
+  
+```
+
+
+Los hallazgos realizados para el análisis de clustering se puede decir que para los diferentes años analizados (2014,2015,2016,2017 y 2018) se puede decir que el número óptimo de cluster que presentan la accidentalidad en la ciudad son `k = 4` . Estos cluster pueden ser llamados cluster de **muy alta**, **alta**, **moderada** y **baja** accidentalidad para la ciudad de Medellín en el periodo de análisis.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+cluster_df_2014 <- cluster_df %>%
+  filter(PERIODO==2014) %>%
+  dplyr::select(-c(PERIODO)) %>%
+  arrange(PROMEDIO_ACCIDENTE_MES) %>%
+  mutate_at(.vars = vars(-(BARRIO)), .funs = funs(na.constant(.x=., .na = 0)))
+
+cluster_df_2014 %>% dplyr::select(-c(BARRIO)) %>%   mutate_all(funs(is.na(.))) %>% colSums()
+``` 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cluster_df_2014_sc <- cluster_df_2014 %>% 
+  dplyr::select(-c(BARRIO)) %>% 
+  scale() %>% 
+  data.frame(.)
+
+fviz_nbclust(cluster_df_2014_sc, kmeans, method = "wss", k.max = 15)
+```
+
+No obstante, es importante resaltar que para el año 2017 no se cumplio completamente el patron de los 4 cluster (solo se evidenciaban 3 cluster) que se encontraban para los otros años; por esta razón se optó por dejarlo con un `k = 3`.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cluster_df_2017 <- cluster_df %>% 
+  filter(PERIODO==2017) %>% 
+  dplyr::select(-c(PERIODO)) %>% 
+  arrange(PROMEDIO_ACCIDENTE_MES) %>% 
+  mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
+
+cluster_df_2017_sc <- cluster_df_2017 %>% 
+  dplyr::select(-c(BARRIO)) %>% 
+  scale() %>% 
+  data.frame(.)
+
+fviz_nbclust(cluster_df_2017_sc, kmeans, method = "wss", k.max = 15)
+
+``` 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(0)
+kmeans.2014 <- kmeans(x = cluster_df_2014_sc, centers = 4, iter.max = 200)
+cluster_df_2014$cluster <- as.integer(kmeans.2014$cluster)
+```
+
+Finalmente, se publica el mapa de Medellín con los respectivos cluster encontrados y se evidencian las conclusiones y los resultados finales del clustering:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cluster_2014_map <- df %>% 
+  filter(PERIODO==2014, BARRIO!="") %>% 
+  group_by(BARRIO) %>% 
+  summarise(
+    lat=mean(LATITUD), lng=mean(LONGITUD), .groups="drop"
+  ) %>% merge(cluster_df_2014 %>% 
+                dplyr::select(BARRIO, cluster), by="BARRIO") %>% 
+  mutate(
+    cluster_colors=as.character(ifelse(cluster==3, "red", 
+                                       ifelse(cluster==4, "orange", 
+                                              ifelse(cluster==1, "yellow", "green"))))
+    )
+
+
+leaflet(cluster_2014_map) %>% addTiles() %>%
+  addCircleMarkers(
+    color = ~cluster_colors,
+    stroke = FALSE, 
+    fillOpacity = 0.5,
+    lng = ~lng, lat = ~lat,
+    label = ~as.character(BARRIO)
+  )
+```
+
+
+De esta gráfica se puede concluir varias cosas:
+
+*1.* Otro de los resultados del análisis de clustering es que aquellos barrios con mayor accidentalidad se encuentran ubicados por las zonas valle y mayormente transitadas en la ciudad, calles como la avenida del río, la avenida guayabal, la avenida de la 33 y sus alrededores, y calles como la 30 a la altura de la 80, la 33 con la 65 y la alpujarra entre otros.
+
+*2.* Con base en lo anterior se puede decir también que Medellín es primordial y predominantemente una ciudad céntrica la cual en su mayoría su actividad económica está ubicada en el centro de la ciudad y los alrededores cercanos.
+
+*3.* Así mismo, si se trazará una línea con los puntos rojos se podría observar que esta corresponde en mayor parte a las vías conocidas como **La Regional** y la **Autopista Norte** vías profundamente estratégicas que conectan todo el Valle (sentido Norte-Sur-Norte) lo que por supuesto las hace unas vías con altos índices de movilidad y de manera directa de altos incidentes viales.
+
+*4.* Otra conclusión que se puede derivar de este análisis es que para los corredores viales de la **Avenida la 80** (puntos anaranjados) y la **Autopista Norte** (puntos rojos) es que tienen una infraestructura vial que es limitada para el número de vehículos que la transitan habitualmente, con esto se quiere decir que: la malla vial de de estas zonas es en muchos casos precaria o deficiente, toda vez que hay partes de estas vías en las que se transita en 3 carriles y luego en 2, generando efectos embudo que ante circunstancias cambiantes (lluvia, arreglos viales, represamiento vehicular y demás) son vías más propensas a generar accidentes.
+
+*5.* Finalmente, y como un hecho meramente visual se puede observar que los niveles de accidentalidad **muy alta**, **alta**, **moderada** y **baja** corresponden a cordones, circuitos o capas viales que se van agravando a medida que se acerca al centro de la ciudad.
+
+
+# Modelado
+
+Como parte entonces del análisis descriptivo y con los resultados obtenidos del proceso de clustering nos adentramos en la parte de modelado. Como fruto del aprendizaje de estas etapas previas se contempla la opción de incluir una sábana de datos que identifique para cada una de las agregaciones de los modelos, los días festivos, los días especiales y los días especiales con festivo esto con ocasión de poder tener un mejor panorama del comportamiento de los accidentes.
+
+
+Asi mismo, es importante resaltar que el objetivo de la capa de modelamiento se tiene estipulado, predecir el número de accidentes para cada nivel de agregación (Mensual,Semanal y Diario) según la clase de accidente (Choque, Atropello, Caída ocupante, Volcamiento, Otros e Incendios) esto quiere decir que serian para cada nivel de agregación serán 6 modelos esto bajo el entendido que seran modelos de regresion, en total se tendrían 18 modelos. De igual manera, se considera pertinente tener modelos lineales, ya que se cuenta con menos de 50 datos por clase de accidente, por lo que un modelo no-lineal, como árboles de decisión o modelos más avanzados, tenderían a sobre ajustarse fácilmente.
+
+Antes de continuar un hecho que vale la pena mencionar es la omisión de la clase de accidentes *incendios* para la estimación de los modelos semanales y diarios. Esta decisión se toma como resultado que para la clase incendio y para cada una de estas agregaciones se presentan muy pocos datos. Esto hace alusión a que los incendios son muy poco comunes en los incidentes viales, además en términos de valores también son muy bajos a lo sumo 3 o 5 por mes, esto dificulta que se pudiera pensar en hacer siquiera un modelo único para incendio.
+
+A continuación, se muestra  la sábana de datos construida para los días especiales, los festivos y los días especiales con festivos.
+
+## Modelos Mensuales
+
+
+```{r data-special-date-viz, echo=FALSE, message=TRUE, warning=TRUE}
+kable(head(special_dates_train)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+df <- rbind(
+  df_train,
+  df_test
+)
+special_dates_train <- special_dates_train %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+special_dates_test <- special_dates_test %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+
+special_dates <- rbind(
+  special_dates_train,
+  special_dates_test
+)
+
+df <- merge(df, special_dates, by = c("PERIODO", "MES", "DIA"))
+
+kable(head(df)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+armado_dataset_mensual <- function(df, objective_var){
+  # conjunto de datos mensual por clase
+  accidentes_por_clase <- df %>% 
+    group_by(PERIODO, MES, CLASE) %>% 
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(CLASE, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, rank)) 
+  
+  # conjunto de datos mensual por gravedad
+  accidentes_por_gravedad <- df %>% 
+    group_by(PERIODO, MES, GRAVEDAD) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(GRAVEDAD, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, rank))
+  
+  # rezagos de la clase
+  rezagos_accidentes <- df %>% 
+    filter(CLASE == objective_var) %>% 
+    group_by(PERIODO, MES) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>%
+    mutate(
+      FECHA=as.Date(paste(PERIODO, formatC(MES, width = 2, flag = "0"), "01", sep='-')),
+      t_minus_1=lag(n_accidentes, n = 1),
+      t_minus_2=lag(n_accidentes, n = 2)
+    ) %>% 
+    dplyr::select(PERIODO, MES, t_minus_2) 
+  
+  # Accidentes en los domingos
+  domingos <- df %>% 
+    mutate(domingo = ifelse(DIA_NOMBRE == "domingo  ", 1, 0)) %>% 
+    group_by(PERIODO, MES) %>% 
+    summarise(accidentes_domingo=sum(domingo), .groups="drop") %>% 
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>% 
+    dplyr::select(-c(PERIODO, MES, rank))
+  
+  
+  # fechas especiales
+  fechas_meses <- special_dates %>% 
+    group_by(PERIODO, MES) %>% 
+    summarise(
+      dias_festivos=sum(DIA_FESTIVO),
+      dias_especiales=sum(FECHA_ESPECIAL),
+      dias_festivos_especiales=sum(FESTIVO_FECHA_ESPECIAL),
+      .groups="drop"
+    )
+  
+  df_processed <- df %>%
+    filter(CLASE == objective_var) %>%
+    group_by(PERIODO, MES) %>% 
+    summarise(
+      numero_accidentes = n(),
+      .groups="drop"
+    ) %>% 
+    mutate(
+      MES=factor(MES)
+      ) %>% 
+    merge(accidentes_por_clase,
+          by.x = c("PERIODO", "MES"), by.y = c("PERIODO_LEAD", "MES_LEAD"), all.x = T) %>%
+    replace_na(list(incendio=0)) %>%
+    merge(accidentes_por_gravedad, by.x = c("PERIODO", "MES"), by.y = c("PERIODO_LEAD", "MES_LEAD"), all.x = T) %>%
+    merge(rezagos_accidentes, by = c("PERIODO", "MES"), all.x = T) %>%
+    merge(domingos, by.x = c("PERIODO", "MES"), by.y = c("PERIODO_LEAD", "MES_LEAD"), all.x = T) %>% 
+    filter(!is.na(t_minus_2)) %>% 
+    merge(fechas_meses, by = c("PERIODO", "MES")) %>% 
+    arrange(PERIODO, MES, .by_group = T)
+  
+  return(df_processed)
+}
+
+df_preprocessed <- armado_dataset_mensual(df=df, objective_var = "choque")
+df_choque_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_choque_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+```
+
+Uno de los procesamientos realizados sobre la sábana de datos es el escalamiento de los datos a escala logarítmica para aproximarlos lo más posible a una normal. Así mismo, se construyen nuevas variables como los rezagos del número de accidentes para cada clase de accidentes, esto se da con ocasión del comportamiento de las variables mensuales. Donde se observar las tendencias que tienen los niveles de accidentes según la clase de accidentes.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+kable(head(df_choque_train)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df <- setDT(df)
+tempo <- df[,.N, by = .(CLASE,MES)]
+
+ggplot(tempo, aes(x= MES,y=N, group=CLASE, color=CLASE)) +
+  geom_line()+
+  facet_wrap(~CLASE, scales = "free_y") +
+    labs(x='Periodo del accidente',
+         title = "Comportamiento de accidentes anuales por clase de accidente") +
+  scale_y_continuous(~'Numero de accidentes') +
+  scale_x_discrete(limit = factor(1:12)) + 
+  theme(legend.position = "none")
+```
+
+En general para los modelos 5 modelos mensuales la estimación se realiza usando una regresión lineal aplicando **regularización lasso** que es la técnica que presenta menores errores de estimación frente a los modelos entrenados bajo la **stepwise elimination** para seleccionar variables. Para los casos de los modelos con **stepwise elimination** se observaban niveles considerables de sobreajuste al comparar los resultados de entrenamiento y validación. Como se observa en el siguiente gráfico para el modelo de choques:
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+df_choque_train <- df_choque_train %>% 
+  mutate(
+    incendio=incendio+1,
+    dias_festivos=dias_festivos+1,
+    dias_especiales=dias_especiales+1,
+    dias_festivos_especiales=dias_festivos_especiales+1
+    )
+
+model.choque.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_choque_train)
+model.choque.steps <- model.choque.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -MES) %>% 
+  step_scale(all_predictors(), -MES)
+
+model.choque.prepared <- prep(model.choque.steps, training = df_choque_train)
+df_choque_train <- bake(model.choque.prepared, df_choque_train)
+
+df_choque_test <- df_choque_test %>% 
+  mutate(
+    incendio=incendio+1,
+    dias_festivos=dias_festivos+1,
+    dias_especiales=dias_especiales+1,
+    dias_festivos_especiales=dias_festivos_especiales+1
+    )
+df_choque_test <- bake(model.choque.prepared, df_choque_test)
+
+```  
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+modelo.choque <- lm(numero_accidentes ~ ., data=df_choque_train)
+step.model.choque <- stepAIC(modelo.choque, direction = "both", trace = F, steps = 2000)
+
+model.choque.summary <- summary(step.model.choque)
+model.choque.summary
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+plot_estimation_errors <- function(y_true, y_pred, title){
+  min_value <- min(y_true, y_pred) - min(y_true, y_pred) * 0.1
+  max_value <- max(y_true, y_pred) + max(y_true, y_pred) * 0.1
+  
+  plot(x=y_true,y=y_pred,
+       ylab="Predicciones",xlab="Observados",
+       xlim=c(min_value, max_value),ylim=c(min_value, max_value),
+       las=1, cex=1, pch=16,
+       main=title)
+  abline(a=0,b=1,lwd=2,col="black", lty=2)
+  R_vl<-cor(y_pred, y_true)
+  R_vl<-format(R_vl, digits = 3, nsmall = 3)
+  rmse_vl<- rmse(actual = y_true, predicted = y_pred)
+  rmse_vl<-format(rmse_vl,digits = 3,nsmall = 2)
+  grid()
+  legend("topleft",legend=paste0(c("Correlación: ","RMSE: "),c(R_vl,rmse_vl)), bty="n")
+}
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfcol=c(1,2)) 
+
+y_pred <- exp(predict(step.model.choque, df_choque_train))
+y_true <- exp(df_choque_train$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Resultados ~ Entrenamiento"
+  )
+
+y_pred <- exp(predict(step.model.choque, df_choque_test))
+y_true <- exp(df_choque_test$numero_accidentes)
+
+test_rmse <- rmse(y_true, y_pred)
+
+test_train_ratio <- round(((test_rmse / train_rmse) - 1)*100, 3)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Resultados ~ Validación"
+  )
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+prepare_data <- function(df, objective_var){
+  # Data preparation
+  df_preprocessed <- armado_dataset_mensual(df=df, objective_var = objective_var)
+  # Data splitting
+  df_tmp_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+  df_tmp_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+  
+  # Data preprocess
+  df_tmp_train <- df_tmp_train %>% 
+    mutate(
+      incendio=incendio+1,
+      dias_festivos=dias_festivos+1,
+      dias_especiales=dias_especiales+1,
+      dias_festivos_especiales=dias_festivos_especiales+1
+    )
+  # Data recipes
+  model.tmp.recipe <- recipe(
+    numero_accidentes ~ ., 
+    data = df_tmp_train
+    )
+  model.tmp.steps <- model.tmp.recipe %>% 
+    step_log(all_outcomes()) %>% 
+    step_center(all_predictors(), -MES) %>% 
+    step_scale(all_predictors(), -MES)
+
+  model.tmp.prepared <- prep(model.tmp.steps, training = df_tmp_train)
+  
+  # Data pipeline
+  df_tmp_train <- bake(model.tmp.prepared, df_tmp_train)
+  
+  # Applying pipeline to test set
+  df_tmp_test <- df_tmp_test %>% 
+    mutate(
+      incendio=incendio+1,
+      dias_festivos=dias_festivos+1,
+      dias_especiales=dias_especiales+1,
+      dias_festivos_especiales=dias_festivos_especiales+1
+    )
+  df_tmp_test <- bake(model.tmp.prepared, df_tmp_test)  
+  
+  response = list(
+    "training"=df_tmp_train,
+    "validation"=df_tmp_test,
+    "model_recipe"=list(
+      "recipe"=model.tmp.recipe,
+      "steps"=model.tmp.steps,
+      "prepared"=model.tmp.prepared
+    )
+  )
+  return(response)
+}
+
+data.atropello <- prepare_data(df=df, objective_var = "atropello")
+df_atropello_train <- data.atropello$training
+df_atropello_test <- data.atropello$validation
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+train_lasso_model <- function(df_train, df_test, min_lambda=-2){
+  # Construcción del dataset
+  x_train <- model.matrix(numero_accidentes~. , df_train)[,-1]
+  y_train <- df_train$numero_accidentes
+  
+  # malla de lambdas a probar
+  lambda_seq <- 10^seq(2, min_lambda, by = -.1)
+  
+  # modelado
+  set.seed(42)
+  cv.lasso <- cv.glmnet(x_train, y_train,
+                        alpha = 1,
+                        lambda = lambda_seq, 
+                        nfolds = 5)
+  
+  lasso.model <- glmnet(x_train, y_train, alpha = 1, lambda = cv.lasso$lambda.min)  
+  
+  y_train_pred <- predict(lasso.model, x_train)
+  train_rmse <- rmse(exp(y_train), exp(y_train_pred))
+  
+  
+  x_test <- model.matrix(numero_accidentes~. , df_test)[,-1]
+  y_test <- df_test$numero_accidentes
+  y_test_pred <- predict(lasso.model, x_test)
+  
+  test_rmse <- rmse(exp(y_test), exp(y_test_pred))
+  
+  response=list(
+    "training"=list(
+      "data"=x_train,
+      "response"=y_train,
+      "predictions"=y_train_pred,
+      "rmse"=train_rmse
+    ),
+    "validation"=list(
+      "data"=x_test,
+      "response"=y_test,
+      "predictions"=y_test_pred,
+      "rmse"=test_rmse
+    ),
+    "model"=lasso.model
+  )
+  return(response)
+}
+
+lasso.atropello.results <- train_lasso_model(df_train = df_atropello_train, df_test = df_atropello_test)
+
+
+plot_estimation_errors(
+  y_true = exp(lasso.atropello.results$training$response), 
+  y_pred = exp(lasso.atropello.results$training$predictions), 
+  title="Rendimiento de modelo mensual atropellos ~ Entrenamiento"
+  )
+
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+data.caida <- prepare_data(df=df, objective_var = "caida ocupante")
+df_caida_train <- data.caida$training
+df_caida_test <- data.caida$validation
+
+lasso.caida.results <- train_lasso_model(df_train = df_caida_train, df_test = df_caida_test)
+
+
+plot_estimation_errors(
+  y_true = exp(lasso.caida.results$training$response), 
+  y_pred = exp(lasso.caida.results$training$predictions), 
+  title="Rendimiento de modelo mensual caida ocupante ~ Entrenamiento"
+  )
+
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+data.volcamiento <- prepare_data(df=df, objective_var = "volcamiento")
+df_volcamiento_train <- data.volcamiento$training
+df_volcamiento_test <- data.volcamiento$validation
+
+lasso.volcamiento.results <- train_lasso_model(df_train = df_volcamiento_train, df_test = df_volcamiento_test, min_lambda = -3)
+
+plot_estimation_errors(
+  y_true = exp(lasso.volcamiento.results$training$response), 
+  y_pred = exp(lasso.volcamiento.results$training$predictions), 
+  title="Rendimiento de modelo mensual volcamientos ~ Entrenamiento"
+  )
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+data.otros <- prepare_data(df=df, objective_var =  "otro")
+df_otros_train <- data.otros$training
+df_otros_test <- data.otros$validation
+
+lasso.otros.results <- train_lasso_model(df_train = df_otros_train, df_test = df_otros_test, min_lambda = -3)
+
+plot_estimation_errors(
+  y_true = exp(lasso.otros.results$training$response), 
+  y_pred = exp(lasso.otros.results$training$predictions), 
+  title="Rendimiento de modelo mensual otros accidentes ~ Entrenamiento"
+  )
+```
+
+Por último para los modelos mensuales, se grafican los diferentes RMSE tanto de entrenamiento como de validación para las diferentes clases.
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+rmse_validation_atro = lasso.atropello.results$validation$rmse 
+rmse_train_atro = lasso.atropello.results$training$rmse
+
+rmse_validation_cai = lasso.caida.results$validation$rmse 
+rmse_train_cai = lasso.caida.results$training$rmse
+
+rmse_validation_vol = lasso.volcamiento.results$validation$rmse
+rmse_train_vol = lasso.volcamiento.results$training$rmse
+
+rmse_validation_oie = lasso.otros.results$validation$rmse
+rmse_train_oie = lasso.otros.results$training$rmse
+
+CLASE_MODELO <- c('choque', 'atropello', 'caida ocupante', 'volcamiento', 'otro')
+RMSE_VALIDATION <- c(test_rmse,rmse_validation_atro,rmse_validation_cai,rmse_validation_vol,rmse_validation_oie)
+RMSE_TRAIN <- c(train_rmse,rmse_train_atro,rmse_train_cai,rmse_train_vol,rmse_train_oie)
+result_rmse <- data.frame(RMSE_VALIDATION, RMSE_TRAIN, CLASE_MODELO)
+
+```
+
+De esta tabla se resaltan varias cosas que son importantes mencionar:
+
+*1.* En general se tienen niveles 'bajos' para los RMSE esto entendiendo que son pronósticos mensuales y sobretodo para la clase de *choque* en la que se presentan un promedio mensual de más de dos mil incidentes relacionados choques, esto se puede interpretar como un nivel bajo de error de accidentes. 
+
+*2.* De la anterior tabla resumen se nota que, la diferencia entre los valores para el RMSE de validación (63) y entrenamiento (31) para la clase *otros * es del doble para validación respecto al entrenamiento; esto sugiere una clara subestimación para esta clase. Una de las razones para esto es que quizás hacen falta más variables que expliquen el comportamiento de este fenómeno puesto que hasta su propia descripción (otros incidentes) pueden ser cualquier otro tipo de factores, lo cual dificulta que se pueda saber con exactitud cuales son las variables que representan de mejor manera este siniestro.
+
+*3.* Una desventaja de los modelos mensuales es la poca cantidad de observaciones disponibles para hacer unas estimaciones más robustas. Es claro que hay margen de mejora, en especial para los modelos de volcamientos y otros accidentes que fueron los que presentaron el peor error de estimación, próximamente se procederá a explorar otras alternativas de modelamiento para estas clases de accidentes.
+ 
+
+```{r rmse table monthly, echo=FALSE, message=FALSE, warning=FALSE}
+kable(head(result_rmse)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "60%")
+```
+
+## Modelos Semanales
+
+Siguiendo con los modelos semanales se mantiene la misma lógica que en los modelos mensuales: Se utilizan modelos de regresión lineal con penalización lasso y modelos para cada una de las clases. Así mismo, también se extraen los rezagos de los accidentes de la última semana de todas las clases, así como los niveles de gravedad y sus respectivos rezagos.
+
+```{r model weekly, echo=FALSE, message=FALSE, warning=FALSE}
+df <- df %>%
+  mutate(SEMANA=week(FECHA))
+special_dates <- special_dates %>% 
+  mutate(
+    FECHA = as_date(paste(
+      PERIODO, 
+      formatC(MES, width = 2, flag = 0),
+      formatC(DIA, width = 2, flag = 0),
+      sep='-'
+      ))
+  ) %>% 
+  mutate(
+    SEMANA=week(FECHA)
+  )
+
+armado_dataset_semanal <- function(df, objective_var){
+  # conjunto de datos semanal por clase
+  accidentes_por_clase <- df %>% 
+    group_by(PERIODO, SEMANA, CLASE) %>% 
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(CLASE, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), SEMANA_LEAD=lead(SEMANA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, SEMANA, rank)) 
+  
+  # conjunto de datos semanal por gravedad
+  accidentes_por_gravedad <- df %>% 
+    group_by(PERIODO, SEMANA, GRAVEDAD) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(GRAVEDAD, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), SEMANA_LEAD=lead(SEMANA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, SEMANA, rank))
+  
+  # rezagos de la clase
+  rezagos_accidentes <- df %>% 
+    filter(CLASE == objective_var) %>% 
+    group_by(PERIODO, SEMANA) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>%
+    mutate(
+      t_minus_1=lag(n_accidentes, n = 1),
+      t_minus_2=lag(n_accidentes, n = 2),
+      t_minus_3=lag(n_accidentes, n = 3)
+    ) %>% 
+    dplyr::select(PERIODO, SEMANA, t_minus_2, t_minus_3) 
+  
+  # Accidentes en los domingos
+  domingos <- df %>% 
+    mutate(domingo = ifelse(DIA_NOMBRE == "domingo  ", 1, 0)) %>% 
+    group_by(PERIODO, SEMANA) %>% 
+    summarise(accidentes_domingo=sum(domingo), .groups="drop") %>% 
+    mutate(PERIODO_LEAD=lead(PERIODO), SEMANA_LEAD=lead(SEMANA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>% 
+    dplyr::select(-c(PERIODO, SEMANA, rank))
+  
+  
+  # fechas especiales
+  fechas_especiales <- special_dates %>% 
+    group_by(PERIODO, SEMANA) %>% 
+    summarise(
+      dias_festivos=sum(DIA_FESTIVO),
+      dias_especiales=sum(FECHA_ESPECIAL),
+      dias_festivos_especiales=sum(FESTIVO_FECHA_ESPECIAL),
+      .groups="drop"
+    )
+  
+  df_processed <- df %>%
+    filter(CLASE == objective_var) %>%
+    group_by(PERIODO, SEMANA) %>% 
+    summarise(
+      numero_accidentes = n(),
+      .groups="drop"
+    ) %>% 
+    mutate(
+      SEMANA=factor(SEMANA)
+      ) %>% 
+    merge(accidentes_por_clase,
+          by.x = c("PERIODO", "SEMANA"), by.y = c("PERIODO_LEAD", "SEMANA_LEAD"), all.x = T) %>%
+    merge(accidentes_por_gravedad, by.x = c("PERIODO", "SEMANA"), by.y = c("PERIODO_LEAD", "SEMANA_LEAD"), all.x = T) %>%
+    merge(rezagos_accidentes, by = c("PERIODO", "SEMANA"), all.x = T) %>%
+    merge(domingos, by.x = c("PERIODO", "SEMANA"), by.y = c("PERIODO_LEAD", "SEMANA_LEAD"), all.x = T) %>% 
+    replace_na(list(incendio=0, muerto=0)) %>%
+    filter(!is.na(t_minus_3)) %>%
+    merge(fechas_especiales, by = c("PERIODO", "SEMANA")) %>% 
+    arrange(PERIODO, SEMANA, .by_group = T)
+  
+  return(df_processed)
+}
+
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "choque")
+df_choque_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_choque_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.choque.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_choque_train)
+model.choque.steps <- model.choque.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.choque.prepared <- prep(model.choque.steps, training = df_choque_train)
+df_choque_train <- bake(model.choque.prepared, df_choque_train)
+df_choque_test <- bake(model.choque.prepared, df_choque_test)
+```
+
+La siguiente tabla muestra las variables que se tienen en cuenta para el modelo semanal.Esta tabla corresponde también a las variables llevadas a valores logarítmicos, centradas y escaladas.
+
+```{r summary table, echo=FALSE, message=FALSE, warning=FALSE}
+kable(head(df_choque_train)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+```{r lasso pipeline, message=FALSE, warning=FALSE, include=FALSE}
+train_lasso_model <- function(df_train, df_test, min_lambda=-2){
+  # Construcción del dataset
+  x_train <- model.matrix(numero_accidentes~. , df_train)[,-1]
+  y_train <- df_train$numero_accidentes
+  
+  # malla de lambdas a probar
+  lambda_seq <- 10^seq(2, min_lambda, by = -.1)
+  
+  # modelado
+  set.seed(42)
+  cv.lasso <- cv.glmnet(x_train, y_train,
+                        alpha = 1,
+                        lambda = lambda_seq, 
+                        nfolds = 5)
+  
+  lasso.model <- glmnet(x_train, y_train, alpha = 1, lambda = cv.lasso$lambda.min)  
+  
+  y_train_pred <- predict(lasso.model, x_train)
+  train_rmse <- rmse(exp(y_train), exp(y_train_pred))
+  
+  
+  x_test <- model.matrix(numero_accidentes~. , df_test)[,-1]
+  y_test <- df_test$numero_accidentes
+  y_test_pred <- predict(lasso.model, x_test)
+  
+  test_rmse <- rmse(exp(y_test), exp(y_test_pred))
+  
+  response=list(
+    "training"=list(
+      "data"=x_train,
+      "response"=y_train,
+      "predictions"=y_train_pred,
+      "rmse"=train_rmse
+    ),
+    "validation"=list(
+      "data"=x_test,
+      "response"=y_test,
+      "predictions"=y_test_pred,
+      "rmse"=test_rmse
+    ),
+    "model"=lasso.model
+  )
+  return(response)
+}
+```
+
+```{r train lasso choque, message=FALSE, warning=FALSE, include=FALSE}
+lasso.choque.results <- train_lasso_model(df_train = df_choque_train, df_test = df_choque_test)
+
+plot_estimation_errors(
+  y_true = exp(lasso.choque.results$training$response), 
+  y_pred = exp(lasso.choque.results$training$predictions), 
+  title="Rendimiento de modelo mensual choque ~ Entrenamiento"
+  )
+```
+
+```{r train lasso atropello, message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "atropello")
+df_atropello_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_atropello_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.atropello.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_atropello_train)
+model.atropello.steps <- model.atropello.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.atropello.prepared <- prep(model.atropello.steps, training = df_atropello_train)
+df_atropello_train <- bake(model.atropello.prepared, df_atropello_train)
+df_atropello_test <- bake(model.atropello.prepared, df_atropello_test)
+
+lasso.atropello.results <- train_lasso_model(df_train = df_atropello_train, df_test = df_atropello_test, min_lambda = -3)
+
+plot_estimation_errors(
+  y_true = exp(lasso.atropello.results$training$response), 
+  y_pred = exp(lasso.atropello.results$training$predictions), 
+  title="Rendimiento de modelo mensual atropello ~ Entrenamiento"
+  )
+```
+
+```{r train lasso caida ocupante, message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "caida ocupante")
+df_caida_ocupante_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_caida_ocupante_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.caida_ocupante.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_caida_ocupante_train)
+model.caida_ocupante.steps <- model.caida_ocupante.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.caida_ocupante.prepared <- prep(model.caida_ocupante.steps, training = df_caida_ocupante_train)
+df_caida_ocupante_train <- bake(model.caida_ocupante.prepared, df_caida_ocupante_train)
+df_caida_ocupante_test <- bake(model.caida_ocupante.prepared, df_caida_ocupante_test)
+
+lasso.caida_ocupante.results <- train_lasso_model(df_train = df_caida_ocupante_train, df_test = df_caida_ocupante_test, min_lambda = -3)
+
+plot_estimation_errors(
+  y_true = exp(lasso.caida_ocupante.results$training$response), 
+  y_pred = exp(lasso.caida_ocupante.results$training$predictions), 
+  title="Rendimiento de modelo mensual caida_ocupante ~ Entrenamiento"
+  )
+```
+
+```{r train lasso volcamiento, message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "volcamiento")
+df_volcamiento_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_volcamiento_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.volcamiento.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_volcamiento_train)
+model.volcamiento.steps <- model.volcamiento.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.volcamiento.prepared <- prep(model.volcamiento.steps, training = df_volcamiento_train)
+df_volcamiento_train <- bake(model.volcamiento.prepared, df_volcamiento_train)
+df_volcamiento_test <- bake(model.volcamiento.prepared, df_volcamiento_test)
+
+lasso.volcamiento.results <- train_lasso_model(df_train = df_volcamiento_train, df_test = df_volcamiento_test, min_lambda = -2)
+
+plot_estimation_errors(
+  y_true = exp(lasso.volcamiento.results$training$response), 
+  y_pred = exp(lasso.volcamiento.results$training$predictions), 
+  title="Rendimiento de modelo mensual volcamiento ~ Entrenamiento"
+  )
+```
+
+```{r train lasso otro, message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_semanal(df=df, objective_var = "otro")
+df_otro_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO))
+df_otro_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO))
+
+model.otro.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_otro_train)
+model.otro.steps <- model.otro.recipe %>% 
+  step_log(all_outcomes()) %>% 
+  step_center(all_predictors(), -SEMANA) %>% 
+  step_scale(all_predictors(), -SEMANA)
+
+model.otro.prepared <- prep(model.otro.steps, training = df_otro_train)
+df_otro_train <- bake(model.otro.prepared, df_otro_train)
+df_otro_test <- bake(model.otro.prepared, df_otro_test)
+
+lasso.otro.results <- train_lasso_model(df_train = df_otro_train, df_test = df_otro_test, min_lambda = -2)
+
+plot_estimation_errors(
+  y_true = exp(lasso.otro.results$training$response), 
+  y_pred = exp(lasso.otro.results$training$predictions), 
+  title="Rendimiento de modelo mensual otro ~ Entrenamiento"
+  )
+
+lasso.otro.results <- train_lasso_model(df_train = df_otro_train, df_test = df_otro_test, min_lambda = -2)
+
+plot_estimation_errors(
+  y_true = exp(lasso.otro.results$training$response), 
+  y_pred = exp(lasso.otro.results$training$predictions), 
+  title="Rendimiento de modelo mensual otro ~ Entrenamiento"
+  )
+```  
+
+```{r rmse table weekly, message=FALSE, warning=FALSE, include=FALSE}
+rmse_validation_cho_w = lasso.choque.results$validation$rmse 
+rmse_train_cho_w = lasso.choque.results$training$rmse
+
+rmse_validation_atro_w = lasso.atropello.results$validation$rmse 
+rmse_train_atro_w = lasso.atropello.results$training$rmse
+
+rmse_validation_cai_w = lasso.caida.results$validation$rmse 
+rmse_train_cai_w = lasso.caida.results$training$rmse
+
+rmse_validation_vol_w = lasso.volcamiento.results$validation$rmse
+rmse_train_vol_w = lasso.volcamiento.results$training$rmse
+
+rmse_validation_oie_w = lasso.otro.results$validation$rmse
+rmse_train_oie_w = lasso.otro.results$training$rmse
+
+CLASE_MODELO <- c('choque', 'atropello', 'caida ocupante', 'volcamiento', 'otros')
+RMSE_VALIDATION <- c(rmse_validation_cho_w,rmse_validation_atro_w,rmse_validation_cai_w,rmse_validation_vol_w,rmse_validation_oie_w)
+RMSE_TRAIN <- c(rmse_train_cho_w,rmse_train_atro_w,rmse_train_cai_w,rmse_train_vol_w,rmse_train_oie_w)
+result_rmse_weekly <- data.frame(RMSE_VALIDATION, RMSE_TRAIN, CLASE_MODELO)
+
+```
+
+
+Como un hecho particular vale la pena resaltar que para el tipo de accidente *choque* tanto para el modelo mensual y ahora para el modelo semanal presentan gran robustez y buena capacidad de generalización. Sin embargo, cuando se evalúa la variación del rmse de validación respecto a entrenamiento es de un `r test_train_ratio` lo cual es cercano al 15%. Valor que se encuentra cerca del límite máximo definido por el profesor como sobreentrenamiento del modelo. Por esta razón se procede a comparar las fpd de los errores de entrenamiento y validación y paso seguido a realizar la estimación del modelo con la penalización lasso.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+train_lasso_model <- function(df_train, df_test, min_lambda=-2){
+  # Construcción del dataset
+  x_train <- model.matrix(numero_accidentes~. , df_train)[,-1]
+  y_train <- df_train$numero_accidentes
+  
+  # malla de lambdas a probar
+  lambda_seq <- 10^seq(2, min_lambda, by = -.1)
+  
+  # modelado
+  set.seed(42)
+  cv.lasso <- cv.glmnet(x_train, y_train,
+                        alpha = 1,
+                        lambda = lambda_seq, 
+                        nfolds = 5)
+  
+  lasso.model <- glmnet(x_train, y_train, alpha = 1, lambda = cv.lasso$lambda.min)  
+  
+  y_train_pred <- predict(lasso.model, x_train)
+  train_rmse <- rmse(exp(y_train), exp(y_train_pred))
+  
+  
+  x_test <- model.matrix(numero_accidentes~. , df_test)[,-1]
+  y_test <- df_test$numero_accidentes
+  y_test_pred <- predict(lasso.model, x_test)
+  
+  test_rmse <- rmse(exp(y_test), exp(y_test_pred))
+  
+  response=list(
+    "training"=list(
+      "data"=x_train,
+      "response"=y_train,
+      "predictions"=y_train_pred,
+      "rmse"=train_rmse
+    ),
+    "validation"=list(
+      "data"=x_test,
+      "response"=y_test,
+      "predictions"=y_test_pred,
+      "rmse"=test_rmse
+    ),
+    "model"=lasso.model
+  )
+  return(response)
+}
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+lasso.choque.results <- train_lasso_model(df_train = df_choque_train, df_test = df_choque_test)
+
+plot_estimation_errors(
+  y_true = exp(lasso.choque.results$training$response), 
+  y_pred = exp(lasso.choque.results$training$predictions), 
+  title="Rendimiento de modelo mensual choque ~ Entrenamiento"
+  )
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot_estimation_errors(
+  y_true = exp(lasso.choque.results$validation$response), 
+  y_pred = exp(lasso.choque.results$validation$predictions), 
+  title="Rendimiento de modelo mensual choque ~ Validación"
+  )
+
+test_train_ratio <- round((lasso.choque.results$validation$rmse / lasso.choque.results$training$rmse -1 )*100, 3) 
+```  
+
+Para cerrar el análisis de los modelos semanales se presentará una tabla resumen de los RMSE para validación y entrenamiento y se darán las conclusiones generales.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+kable(head(result_rmse_weekly)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "60%")
+```
+
+*1.* Los modelos semanales tuvieron un buen desempeño a nivel general, a excepción de los modelos de **volcamiento** y **otros**, los cuales sufrieron de tener rangos muy cerrados de estimación, por lo que no tienen en cuenta toda la variabilidad total del fenómeno de estudio. Es importante explorar nuevas variables que le permitan a los modelos capturar la variabilidad de estas clases.
+
+*2.* Para el modelo de atropellos, se ve una deficiencia en la calidad de las predicciones, en especial para el conjunto de validación, donde es claro un sobreestimación de las observaciones, sin embargo, en términos de RMSE, es un modelo que no posee una gran variación respecto al conjunto de entrenamiento.
+
+*3.* Para caida ocupante, la variación del **RMSE** de validación respecto al entrenamiento es de un `r test_train_ratio`% lo cual es un buen indicativo de la capacidad de generalización del modelo. Adicional, las **FDP** de los errores de entrenamiento y validación no se diferencian mucho por lo que se ve que el modelo tiene un buen ajuste.
+
+*4.* A pesar de que el modelo de volcamiento no posea una variación tan alta `r test_train_ratio`%, es evidente que el modelo se encuentra subestimando los datos, y el rango de las predicciones no es acorde al rango lo la variabilidad natural del fenómeno en estudio, es necesario profundizar para este modelo. 
+ 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+special_dates_train <- special_dates_train %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+special_dates_test <- special_dates_test %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+
+special_dates <- rbind(
+  special_dates_train,
+  special_dates_test
+) %>% distinct()
+
+df <- merge(df, special_dates, by = c("PERIODO", "MES", "DIA"))
+```
+
+## Modelos Diarios
+
+```{r setup data model daily, message=FALSE, warning=FALSE, include=FALSE}
+armado_dataset_diario <- function(df, objective_var){
+  # conjunto de datos diario por clase
+  accidentes_por_clase <- df %>% 
+    group_by(PERIODO, MES, DIA, CLASE) %>% 
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(CLASE, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, DIA, rank)) 
+  
+  # conjunto de datos dia por gravedad
+  accidentes_por_gravedad <- df %>% 
+    group_by(PERIODO, MES, DIA, GRAVEDAD) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(GRAVEDAD, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, DIA, rank))
+  
+  accidentes_por_hora <- df %>% mutate(HORA=hour(FECHA)) %>%
+    mutate(
+      temprano=ifelse(HORA %in% c(1,2,3,4,5,6), 1, 0),
+      temprano_trabajo=ifelse(HORA %in% c(7,8,9,10,11,12), 1,0),
+      almuerzo=ifelse(HORA == 13, 1, 0),
+      tarde=ifelse(HORA %in% c(14,15,16,17,18), 1, 0),
+      noche=ifelse(HORA %in% c(19, 20, 21, 22, 23, 24), 1,0)
+      ) %>% 
+    group_by(PERIODO, MES, DIA) %>% 
+    summarise(
+      accidentes_temprano=sum(temprano),
+      accidentes_temprano_trabajo=sum(temprano_trabajo),
+      accidentes_almuerzo=sum(almuerzo),
+      accidentes_tarde=sum(tarde),
+      accidentes_noche=sum(noche),
+      .groups="drop"
+    ) %>% 
+  mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, DIA, rank))
+  
+  # rezagos de la clase
+  rezagos_accidentes <- df %>% 
+    filter(CLASE == objective_var) %>% 
+    group_by(PERIODO, MES, DIA) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>%
+    mutate(
+      FECHA=as.Date(paste(PERIODO, formatC(MES, width = 2, flag = "0"), formatC(DIA, width = 2, flag = "0"), sep='-')),
+      t_minus_1=lag(n_accidentes, n = 1),
+      t_minus_2=lag(n_accidentes, n = 2),
+      t_minus_3=lag(n_accidentes, n = 3),
+      t_minus_4=lag(n_accidentes, n = 4),
+      t_minus_5=lag(n_accidentes, n = 5),
+      t_minus_6=lag(n_accidentes, n = 6),
+    ) %>% 
+    dplyr::select(PERIODO, MES, DIA, t_minus_2, t_minus_3, t_minus_4, t_minus_5, t_minus_6) 
+  
+  # Accidentes en los domingos
+  domingos <- df %>% 
+    mutate(domingo = ifelse(DIA_NOMBRE == "domingo  ", 1, 0)) %>% 
+    group_by(PERIODO, MES, DIA) %>% 
+    summarise(accidentes_domingo=sum(domingo), .groups="drop") %>% 
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>% 
+    dplyr::select(-c(PERIODO, MES, DIA, rank)) 
+  
+  # Union del df
+  df_processed <- df %>%
+    filter(CLASE == objective_var) %>%
+    group_by(PERIODO, MES, DIA) %>% 
+    summarise(
+      numero_accidentes = n(),
+      .groups="drop"
+    ) %>% 
+    mutate(
+      DIA=factor(DIA),
+      MES=factor(MES)
+      ) %>%
+    merge(accidentes_por_clase,
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    merge(accidentes_por_gravedad, 
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    merge(rezagos_accidentes,
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO", "MES", "DIA"), all.x = T) %>% 
+    merge(domingos, 
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    merge(special_dates,
+          by = c("PERIODO", "MES", "DIA")) %>% 
+    merge(accidentes_por_hora,
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    mutate(
+      DIA_FESTIVO=factor(DIA_FESTIVO),
+      FECHA_ESPECIAL=factor(FECHA_ESPECIAL),
+      FESTIVO_FECHA_ESPECIAL=factor(FESTIVO_FECHA_ESPECIAL)
+      ) %>% 
+    arrange(PERIODO, MES, DIA, .by_group = T) %>% 
+    filter(!is.na(t_minus_6)) %>% 
+    replace_na(list(incendio=0, muerto=0, volcamiento=0)) %>% 
+    mutate(
+      DIA_SEMANA = factor(wday(
+        as_date(
+          paste(
+            PERIODO, formatC(MES, width = 2, flag = 0), formatC(DIA, width = 2, flag = 0), sep='-')
+        )
+      )
+      )
+    )
+  
+  return(df_processed)
+}
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "choque")
+df_choque_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_choque_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.choque.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_choque_train)
+model.choque.steps <- model.choque.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.choque.prepared <- prep(model.choque.steps, training = df_choque_train)
+df_choque_train <- bake(model.choque.prepared, df_choque_train)
+df_choque_test <- bake(model.choque.prepared, df_choque_test)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+modelo.choque <- lm(numero_accidentes ~ ., data=df_choque_train)
+step.model.choque <- stepAIC(modelo.choque, direction = "both", trace = F, steps = 2000)
+
+model.choque.summary <- summary(step.model.choque)
+model.choque.summary
+```
+
+En primera instancia, se observa un muy buen ajuste de los datos de entrenamiento para el modelo de regresión lineal. No obstante, es necesario evaluar su capacidad de generalizar, es necesario evaluarlo en el conjunto de validación. En la siguiente gráfica se observan los resultados del RMSE tanto para validación como para entrenamiento para la clase choque, lo cual hace sospechar que se presenta subestimación de los datos pero sin que esto sea algo grave.
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+plot_estimation_errors <- function(y_true, y_pred, title){
+  min_value <- min(y_true, y_pred) - min(y_true, y_pred) * 0.1
+  max_value <- max(y_true, y_pred) + max(y_true, y_pred) * 0.1
+  
+  plot(x=y_true,y=y_pred,
+       ylab="Predicciones",xlab="Observados",
+       xlim=c(min_value, max_value),ylim=c(min_value, max_value),
+       las=1, cex=1, pch=16,
+       main=title)
+  abline(a=0,b=1,lwd=2,col="black", lty=2)
+  R_vl<-cor(y_pred, y_true)
+  R_vl<-format(R_vl, digits = 3, nsmall = 3)
+  rmse_vl<- rmse(actual = y_true, predicted = y_pred)
+  rmse_vl<-format(rmse_vl,digits = 3,nsmall = 2)
+  grid()
+  legend("topleft",legend=paste0(c("Correlación: ","RMSE: "),c(R_vl,rmse_vl)), bty="n")
+}
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+par(mfrow= c(1,2))
+y_pred_train <- exp(predict(step.model.choque, df_choque_train))
+y_true_train <- exp(df_choque_train$numero_accidentes)
+
+train_rmse_cho <- rmse(y_true, y_pred)
+
+y_pred_test <- exp(predict(step.model.choque, df_choque_test))
+y_true_test <- exp(df_choque_test$numero_accidentes)
+
+test_rmse_cho <- rmse(y_true, y_pred)
+
+test_train_ratio <- round(((test_rmse_cho / train_rmse_cho) - 1)*100, 3)
+
+test_train_ratio <- round(((test_rmse_cho / train_rmse_cho) - 1)*100, 3)
+
+plot_estimation_errors(
+  y_true = y_true_train, 
+  y_pred = y_pred_train, 
+  title="Rendimiento ~ Entrenamiento"
+  )
+plot_estimation_errors(
+  y_true = y_true_test, 
+  y_pred = y_pred_test, 
+  title="Rendimiento ~ Validación"
+  )
+```
+
+Dado lo anterior se graficaron los errores tanto para validación como para entrenamiento.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot_errors_density <- function(model, train, y_train, test, y_test, title){
+  # data extraction
+  y_pred <- exp(predict(model, train))
+  y_true <- exp(y_train)
+  train_error <- y_true - y_pred
+  y_pred <- exp(predict(model, test))
+  y_true <- exp(y_test)
+  test_error <- y_true - y_pred
+  #errors dataframe
+  errors_df <- data.frame(
+    errors = c(train_error, test_error),
+    error_type = c(
+      rep("train", length(train_error)),
+      rep("test", length(test_error))
+    )
+  )
+  # plotting
+  ggplot(errors_df, aes(x=errors, color=error_type)) +
+    geom_density() + 
+    theme_classic() + 
+    ggtitle(title) + 
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+plot_errors_density(
+  model = step.model.choque, 
+  train = df_choque_train, 
+  y_train = df_choque_train$numero_accidentes,
+  test = df_choque_test, 
+  y_test = df_choque_test$numero_accidentes,
+  title="Errores de entrenamiento y validación clase choque"
+  )
+
+```
+
+Del análisis de errores, es claro que el modelo tiene problemas de subestimación, ya que las estimaciones no superan los valores de aproximadamente 120 choques por día. Sin embargo, viendo justamente los datos, es una proporción pequeña respecto a todo el conjunto de datos, por lo que podrían denotarse como observaciones más atípicas.
+
+Al continuar con el proceso de entrenamiento de los modelos semanales es preciso decir que si bien para la clase choque la regresión lineal ajusta relativamente bien los datos, para la demás clases esta hipótesis no se cumple a cabalidad. Como se mostrará en el siguiente gráfico para los rmse del modelo de la clase atropello:
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "atropello")
+df_atropello_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_atropello_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.atropello.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_atropello_train)
+model.atropello.steps <- model.atropello.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.atropello.prepared <- prep(model.atropello.steps, training = df_atropello_train)
+df_atropello_train <- bake(model.atropello.prepared, df_atropello_train)
+df_atropello_test <- bake(model.atropello.prepared, df_atropello_test)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+modelo.atropello <- lm(numero_accidentes ~ ., data=df_atropello_train)
+step.model.atropello <- stepAIC(modelo.atropello, direction = "both", trace = F, steps = 2000)
+
+model.atropello.summary <- summary(step.model.atropello)
+model.atropello.summary
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+
+y_pred_train <- exp(predict(step.model.atropello, df_atropello_train))
+y_true_train <- exp(df_atropello_train$numero_accidentes)
+
+train_rmse_atr <- rmse(y_true_train, y_pred_train)
+
+y_pred <- exp(predict(step.model.atropello, df_atropello_test))
+y_true <- exp(df_atropello_test$numero_accidentes)
+
+test_rmse_atr <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true_train, 
+  y_pred = y_pred_train, 
+  title="Rendimiento ~ Entrenamiento"
+  )
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento ~ Validación"
+  )
+```
+
+El modelo de regresión lineal claramente parece no ajustarse correctamente a los datos. Sin embargo, en términos de RMSE no se presentan valores exageradamente altos que es lo que sucede cuando no se ajustan los datos a la regresión lineal, esto puede deberse a que hay un comportamiento no lineal atípico y de esta manera se ajusta completamente la regresión lineal.Una de las soluciones puede ser incorporar nuevas variables que logren explicar mejor la variabilidad del fenómeno a estudiar.
+
+```{r caida ocupante data, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "caida ocupante")
+df_caida_ocupante_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_caida_ocupante_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.caida_ocupante.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_caida_ocupante_train)
+model.caida_ocupante.steps <- model.caida_ocupante.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.caida_ocupante.prepared <- prep(model.caida_ocupante.steps, training = df_caida_ocupante_train)
+df_caida_ocupante_train <- bake(model.caida_ocupante.prepared, df_caida_ocupante_train)
+df_caida_ocupante_test <- bake(model.caida_ocupante.prepared, df_caida_ocupante_test)
+```
+
+```{r caida ocupante model, warning=FALSE, include=FALSE}
+modelo.caida_ocupante <- lm(numero_accidentes ~ ., data=df_caida_ocupante_train)
+step.model.caida_ocupante <- stepAIC(modelo.caida_ocupante, direction = "both", trace = F, steps = 2000)
+
+model.caida_ocupante.summary <- summary(step.model.caida_ocupante)
+model.caida_ocupante.summary
+```
+
+```{r caida ocupante rmse, warning=FALSE, include=FALSE}
+y_pred <- exp(predict(step.model.caida_ocupante, df_caida_ocupante_train))
+y_true <- exp(df_caida_ocupante_train$numero_accidentes)
+
+train_rmse_cai <- rmse(y_true, y_pred)
+
+
+y_pred <- exp(predict(step.model.caida_ocupante, df_caida_ocupante_test))
+y_true <- exp(df_caida_ocupante_test$numero_accidentes)
+
+test_rmse_cai <- rmse(y_true, y_pred)
+```
+
+```{r volcamiento data and model, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "volcamiento")
+df_volcamiento_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_volcamiento_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.volcamiento.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_volcamiento_train)
+model.volcamiento.steps <- model.volcamiento.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.volcamiento.prepared <- prep(model.volcamiento.steps, training = df_volcamiento_train)
+df_volcamiento_train <- bake(model.volcamiento.prepared, df_volcamiento_train)
+df_volcamiento_test <- bake(model.volcamiento.prepared, df_volcamiento_test)
+
+modelo.volcamiento <- lm(numero_accidentes ~ ., data=df_volcamiento_train)
+step.model.volcamiento <- stepAIC(modelo.volcamiento, direction = "both", trace = F, steps = 2000)
+
+model.volcamiento.summary <- summary(step.model.volcamiento)
+model.volcamiento.summary
+```
+
+```{r rmse volcamiento, message=FALSE, warning=FALSE, include=FALSE}
+y_pred <- exp(predict(step.model.volcamiento, df_volcamiento_train))
+y_true <- exp(df_volcamiento_train$numero_accidentes)
+
+train_rmse_vol <- rmse(y_true, y_pred)
+
+y_pred <- exp(predict(step.model.volcamiento, df_volcamiento_test))
+y_true <- exp(df_volcamiento_test$numero_accidentes)
+
+test_rmse_vol <- rmse(y_true, y_pred)
+```
+
+```{r otro model and data, message=FALSE, warning=FALSE, include=FALSE}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "otro")
+df_otro_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_otro_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.otro.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_otro_train)
+model.otro.steps <- model.otro.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.otro.prepared <- prep(model.otro.steps, training = df_otro_train)
+df_otro_train <- bake(model.otro.prepared, df_otro_train)
+df_otro_test <- bake(model.otro.prepared, df_otro_test)
+
+modelo.otro <- lm(numero_accidentes ~ ., data=df_otro_train)
+step.model.otro <- stepAIC(modelo.otro, direction = "both", trace = F, steps = 2000)
+
+model.otro.summary <- summary(step.model.otro)
+model.otro.summary
+```
+
+```{r otro rmse, message=FALSE, warning=FALSE, include=FALSE}
+y_pred <- exp(predict(step.model.otro, df_otro_train))
+y_true <- exp(df_otro_train$numero_accidentes)
+
+train_rmse_otr <- rmse(y_true, y_pred)
+
+
+y_pred <- exp(predict(step.model.otro, df_otro_test))
+y_true <- exp(df_otro_test$numero_accidentes)
+
+test_rmse_otr <- rmse(y_true, y_pred)
+```
+  
+```{r rmse table daily, message=FALSE, warning=FALSE, include=FALSE}
+
+CLASE_MODELO <- c('choque', 'atropello', 'caida ocupante', 'volcamiento', 'otros')
+RMSE_VALIDATION <- c(test_rmse_cho,test_rmse_atr,test_rmse_cai,test_rmse_vol,test_rmse_otr)
+RMSE_TRAIN <- c(train_rmse_cho,train_rmse_atr,train_rmse_cai,train_rmse_vol,train_rmse_otr)
+result_rmse_daily <- data.frame(RMSE_VALIDATION, RMSE_TRAIN, CLASE_MODELO)
+```
+
+```{r summary rmse daily, echo=FALSE, message=TRUE, warning=TRUE}
+kable(head(result_rmse_daily)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+# Conclusiones
+
+En suma, del trabajo en general queda una buena sensacion de los resultados obtenidos, con las oportunidades de mejora correspondientes. Asi mismo, es preciso resaltar que para todo el proyecto se realizo un aplicacion de los conocimientos obtenidos del curso al igual que otros conocimientos previos que hacian enriquecer y refinar los resultados. De igual manera, es importante resaltar el hecho que se haya decidido como entregables el aplicativo web en **Shiny** y los reportes en **Rpubs** pues esto afianza conocimientos y nos invita a realizar publicaciones abiertas al publico y hacer divulgacion de los conocimientos. Otro hecho relevante es la invitacion y la directriz de alojar el proyecto sobre un repositorio lo cual tambien nuevamente genera confianza para la publicacion del conocimiento y poder en algunos casos realizar disscusiones que mejoren los hechos empiricos.
+
+En cuanto a los resultados del trabajo es importante resaltar que: 
+
+*1.* Los atropellos se presentan la mayoría de las veces contra ciclistas (ciclo ruta) y contra peatones (vía peatonal) lo cual hace que estos 2 actores (ciclistas y peatones) sean los más vulnerables en las vías.
+
+*2.* Las caídas de ocupante se dan con mayor frecuencia en túneles, lotes o predios y en ciclo rutas.
+
+*3.* Para las tendencias anuales de la gravedad del accidente: se pueden observar disminuciones de la fatalidad de los mismos (*heridos* y *muertos*) lo que puede hablar sobre mejores niveles de educación vial de los actores. Sin embargo, para *solo daño* se presenta una tendencia creciente. No obstante, se hace imperativo obtener más datos para esto ya que tan solo 4 años no parecen ser suficientes para comprender ampliamente estos fenómenos.
+
+*4.* Los días *domingo* se presentan menos accidentes en comparación con los demás días de la semana, esto bajo el supuesto que son días de ocio de las personas y el uso de los medios de transporte son menores. Así mismo, este gráfico muestra que para todos los días con excepción para *domingo* todos los días tienen valores muy similares.
+
+*5.* Los lugares de la ciudad donde se presentan mayores números de autos también son lugares con mayores niveles de choque: La Candelaria, El poblado, Belén, Guayabal, Robledo y demás, son lugares con alta congestión vehicular lo que puede traducir mayores niveles de choques.
+
+*6.* Para la ***clase accidente** se puede realizar una reducción de dimensión, pasando de 6 dimensiones a tan solo 2 dimensiones. Estas nuevas dimensiones (Siniestro con Lesiones -SCL- y Siniestro sin Lesión -SSL-) están relacionadas con si hay o no lesiones en el siniestro. Se observa que para la gravedad solo daños el 99.3% de los siniestros fue sin lecciones lo que hace suponer el la mayoría de la clase de choques son menores y no hay lecciones (materiales graves ni sobre las personas). De esta manera, la clase choque se puede convertir *SSL* y las demás clases (atropello, caída ocupante, incendio, otro y volcamiento) se pueden convertir en *SCL*.
+
+*7.* Los hallazgos realizados para el análisis de clustering se puede decir que para los diferentes años analizados (2014,2015,2016,2017 y 2018) se puede decir que el número óptimo de cluster que presentan la accidentalidad en la ciudad son `k = 4` . Estos cluster pueden ser llamados cluster de **muy alta**, **alta**, **moderada** y **baja** accidentalidad para la ciudad de Medellín en el periodo de análisis.
+Con base en lo anterior se puede decir también que Medellín es primordial y predominantemente una ciudad céntrica la cual en su mayoría su actividad económica está ubicada en el centro de la ciudad y los alrededores cercanos.
+
+*8.* Al trazar una línea con los puntos rojos se podría observar que esta corresponde en mayor parte a las vías conocidas como **La Regional** y la **Autopista Norte** vías profundamente estratégicas que conectan todo el Valle (sentido Norte-Sur-Norte) lo que por supuesto las hace unas vías con altos índices de movilidad y de manera directa de altos incidentes viales.
+
+*9.* Los corredores viales de la **Avenida la 80** (puntos anaranjados) y la **Autopista Norte** (puntos rojos) es que tienen una infraestructura vial que es limitada para el número de vehículos que la transitan habitualmente, con esto se quiere decir que: la malla vial de de estas zonas es en muchos casos precaria o deficiente, toda vez que hay partes de estas vías en las que se transita en 3 carriles y luego en 2, generando efectos embudo que ante circunstancias cambiantes (lluvia, arreglos viales, represamiento vehicular y demás) son vías más propensas a generar accidentes.
+
+*10.* La tenencia de buenos datos y de calidad son importantes en el proceso de modelamiento, por eso la omisión de la clase de accidentes *incendios* para la estimación de los modelos semanales y diarios deja un sinsabor. Esta decisión se toma como resultado que para la clase incendio y para cada una de estas agregaciones se presentan muy pocos datos. Esto hace alusión a que los incendios son muy poco comunes en los incidentes viales, además en términos de valores también son muy bajos a lo sumo 3 o 5 por mes, esto dificulta que se pudiera pensar en hacer siquiera un modelo único para incendio.
+
+*11.* En general para los modelos 5 modelos mensuales la estimación se realiza usando una regresión lineal aplicando **regularización lasso** que es la técnica que presenta menores errores de estimación frente a los modelos entrenados bajo la **stepwise elimination** para seleccionar variables. Para los casos de los modelos con **stepwise elimination** se observaban niveles considerables de sobreajuste al comparar los resultados de entrenamiento y validación. 
+
+
+*12.*Una desventaja de los modelos mensuales es la poca cantidad de observaciones disponibles para hacer unas estimaciones más robustas. Es claro que hay margen de mejora, en especial para los modelos de volcamientos y otros accidentes que fueron los que presentaron el peor error de estimación, próximamente se procederá a explorar otras alternativas de modelamiento para estas clases de accidentes.
+
+*13.* Los modelos para las clases **volcamiento** y **otros** se consideran para los 3 niveles de agregación una oportunidad de mejora. Ya que estos sufrieron de tener rangos muy cerrados de estimación, por lo que no tienen en cuenta toda la variabilidad total del fenómeno de estudio. Es importante explorar nuevas variables que le permitan a los modelos capturar la variabilidad de estas clases. Adicional a esto, son eventos que desde su concepción pueden limitar el análisis: pues son incidentes viales (muy graves por supuesto) con baja frecuencia de accidentes, esto no quiere decir que esté mal, sino por el contrario es positivo. Sin embargo, pero para el objeto que nos compete (realizar modelos predictivos) no son de mucha ayuda el tener pocas observaciones o hace que se deban tratar con otras metodologías (detección de anomalías).
+
+
+# Enlaces de resultados
+
+**El repositorio del proyecto se encuentra en el siguiente enlace**
+
+- [Github](https://github.com/alcadavidro/medellin-movility-analytics)
+
+**El reporte del analisis exploratorio de los datos se encuentra en el siguiente enlace**
+
+- [Exploratory Descriptive Analysis](https://rpubs.com/santy1129/654267)
+
+**Los Reportes de los modelos predictivos se encuentran en los siguiente enlace**
+
+- [Daily models](https://rpubs.com/Alejocadro/655645)
+- [Weekly models](https://rpubs.com/santy1129/655996)
+- [Monthly models](https://rpubs.com/santy1129/655997)
+
+**El reporte de la clusterizacion se encuentra en el siguiente enlace**
+
+- [Clustering analysis](https://rpubs.com/santy1129/656000)
+
+**El video promocional de la pagina web se encuentra en el siguiente enlace**
+
+- [Web App](https://alejocad03.shinyapps.io/accidentalidad_medellin/)
+
+**El video promocional de la pagina web se encuentra en el siguiente enlace**
+
+- [Promotional Video](https://www.youtube.com/watch?v=A7xWfvU76ZI&rel=0&utm_source=broadcast&utm_medium=email&utm_campaign=Transactional-Publish-success)
+
+
+
+

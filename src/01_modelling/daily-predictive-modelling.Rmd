@@ -1,0 +1,591 @@
+---
+title: "daily-predictive-modelling"
+author:
+  - name: "Alejandro Cadavid Romero"
+    email: alcadavidro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+  - name: "Santiago Vasquez Rodriguez"
+    email: svasquezro@unal.edu.co
+    affiliation: Universidad Nacional de Colombia
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introducción
+
+Este documento hace parte del trabajo del curso de **Analítica Predictiva** de la Universidad Nacional de Colombia para la Maestría en Ingeniería y Especialización en Analítica. El alcance de este es la creación de modelos predictivos para la estimación de cantidad de accidentes en el valle del aburra a nivel diario.  
+
+### Carga de librerias
+```{r loading-libraries}
+# Manipulación de datos
+library(dplyr)
+library(tidyr)
+library(lubridate)
+
+# Modelado de datos
+library(recipes)
+library(Metrics)
+library(glmnet)
+library(caret)
+library(MASS)
+
+# Visualización
+library(ggplot2)
+
+# Formato tablas
+library(kableExtra)
+```
+
+
+### Carga de datos  
+```{r loading-data}
+df_train <- read.csv('../../data/processed/train_data.csv')
+df_test <- read.csv('../../data/processed/test_data.csv')
+special_dates_train <- read.csv('../../data/processed/special_date_monthly_2017.csv')
+special_dates_test <- read.csv('../../data/processed/special_date_monthly_2018.csv')
+```
+
+```{r data-train-viz}
+kable(head(df_train)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+```
+
+# Armado del conjunto de datos  
+Debido a que se deben armar ciertas agregaciones a nivel de conjunto de datos antes de crear los datasets de entrenamiento, se incluye una etapa de armado del conjunto de variables, no está asociado directamente con la limpieza de los datos. La base que se construye a continuación serán los cimientos para el modelo el modelo diario.  
+
+```{r}
+df <- rbind(
+  df_train,
+  df_test
+)
+special_dates_train <- special_dates_train %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+special_dates_test <- special_dates_test %>% 
+  dplyr::select(PERIODO, MES, DIA, DIA_FESTIVO, FECHA_ESPECIAL, FESTIVO_FECHA_ESPECIAL)
+
+special_dates <- rbind(
+  special_dates_train,
+  special_dates_test
+) %>% distinct()
+
+df <- merge(df, special_dates, by = c("PERIODO", "MES", "DIA"))
+
+kable(head(df)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  scroll_box(width = "100%")
+
+```
+
+
+# Modelado diario
+## Clase choque
+### Preprocesamiento de datos
+```{r}
+
+armado_dataset_diario <- function(df, objective_var){
+  # conjunto de datos diario por clase
+  accidentes_por_clase <- df %>% 
+    group_by(PERIODO, MES, DIA, CLASE) %>% 
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(CLASE, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, DIA, rank)) 
+  
+  # conjunto de datos dia por gravedad
+  accidentes_por_gravedad <- df %>% 
+    group_by(PERIODO, MES, DIA, GRAVEDAD) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>% 
+    spread(GRAVEDAD, n_accidentes) %>%
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, DIA, rank))
+  
+  accidentes_por_hora <- df %>% mutate(HORA=hour(FECHA)) %>%
+    mutate(
+      temprano=ifelse(HORA %in% c(1,2,3,4,5,6), 1, 0),
+      temprano_trabajo=ifelse(HORA %in% c(7,8,9,10,11,12), 1,0),
+      almuerzo=ifelse(HORA == 13, 1, 0),
+      tarde=ifelse(HORA %in% c(14,15,16,17,18), 1, 0),
+      noche=ifelse(HORA %in% c(19, 20, 21, 22, 23, 24), 1,0)
+      ) %>% 
+    group_by(PERIODO, MES, DIA) %>% 
+    summarise(
+      accidentes_temprano=sum(temprano),
+      accidentes_temprano_trabajo=sum(temprano_trabajo),
+      accidentes_almuerzo=sum(almuerzo),
+      accidentes_tarde=sum(tarde),
+      accidentes_noche=sum(noche),
+      .groups="drop"
+    ) %>% 
+  mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>%
+    dplyr::select(-c(PERIODO, MES, DIA, rank))
+  
+  # rezagos de la clase
+  rezagos_accidentes <- df %>% 
+    filter(CLASE == objective_var) %>% 
+    group_by(PERIODO, MES, DIA) %>%
+    summarise(n_accidentes=n(), .groups="drop") %>%
+    mutate(
+      FECHA=as.Date(paste(PERIODO, formatC(MES, width = 2, flag = "0"), formatC(DIA, width = 2, flag = "0"), sep='-')),
+      t_minus_1=lag(n_accidentes, n = 1),
+      t_minus_2=lag(n_accidentes, n = 2),
+      t_minus_3=lag(n_accidentes, n = 3),
+      t_minus_4=lag(n_accidentes, n = 4),
+      t_minus_5=lag(n_accidentes, n = 5),
+      t_minus_6=lag(n_accidentes, n = 6),
+    ) %>% 
+    dplyr::select(PERIODO, MES, DIA, t_minus_2, t_minus_3, t_minus_4, t_minus_5, t_minus_6) 
+  
+  # Accidentes en los domingos
+  domingos <- df %>% 
+    mutate(domingo = ifelse(DIA_NOMBRE == "domingo  ", 1, 0)) %>% 
+    group_by(PERIODO, MES, DIA) %>% 
+    summarise(accidentes_domingo=sum(domingo), .groups="drop") %>% 
+    mutate(PERIODO_LEAD=lead(PERIODO), MES_LEAD=lead(MES), DIA_LEAD=lead(DIA), rank = 1:length(PERIODO)) %>%
+    filter(rank < max(rank)) %>% 
+    dplyr::select(-c(PERIODO, MES, DIA, rank)) 
+  
+  # Union del df
+  df_processed <- df %>%
+    filter(CLASE == objective_var) %>%
+    group_by(PERIODO, MES, DIA) %>% 
+    summarise(
+      numero_accidentes = n(),
+      .groups="drop"
+    ) %>% 
+    mutate(
+      DIA=factor(DIA),
+      MES=factor(MES)
+      ) %>%
+    merge(accidentes_por_clase,
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    merge(accidentes_por_gravedad, 
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    merge(rezagos_accidentes,
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO", "MES", "DIA"), all.x = T) %>% 
+    merge(domingos, 
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    merge(special_dates,
+          by = c("PERIODO", "MES", "DIA")) %>% 
+    merge(accidentes_por_hora,
+          by.x = c("PERIODO", "MES", "DIA"), by.y = c("PERIODO_LEAD", "MES_LEAD", "DIA_LEAD"), all.x = T) %>%
+    mutate(
+      DIA_FESTIVO=factor(DIA_FESTIVO),
+      FECHA_ESPECIAL=factor(FECHA_ESPECIAL),
+      FESTIVO_FECHA_ESPECIAL=factor(FESTIVO_FECHA_ESPECIAL)
+      ) %>% 
+    arrange(PERIODO, MES, DIA, .by_group = T) %>% 
+    filter(!is.na(t_minus_6)) %>% 
+    replace_na(list(incendio=0, muerto=0, volcamiento=0)) %>% 
+    mutate(
+      DIA_SEMANA = factor(wday(
+        as_date(
+          paste(
+            PERIODO, formatC(MES, width = 2, flag = 0), formatC(DIA, width = 2, flag = 0), sep='-')
+        )
+      )
+      )
+    )
+  
+  return(df_processed)
+}
+```  
+
+
+Se procede a realizar la construcción del conjunto de datos para la clase choque y hacer todo el pipeline de preprocesamiento para implementar el escalado y estandarización al conjunto de entrenamiento y validación.  
+```{r}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "choque")
+df_choque_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_choque_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.choque.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_choque_train)
+model.choque.steps <- model.choque.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.choque.prepared <- prep(model.choque.steps, training = df_choque_train)
+df_choque_train <- bake(model.choque.prepared, df_choque_train)
+df_choque_test <- bake(model.choque.prepared, df_choque_test)
+```  
+
+### Modelamiento  
+#### Regresión lineal simple  
+Como primer intento, vale la pena evaluar un modelo de regresión lineal simple con stepwise variable selection para descartar variables que no entreguen valor.  
+```{r}
+modelo.choque <- lm(numero_accidentes ~ ., data=df_choque_train)
+step.model.choque <- stepAIC(modelo.choque, direction = "both", trace = F, steps = 2000)
+
+model.choque.summary <- summary(step.model.choque)
+model.choque.summary
+```
+
+```{r}
+plot_estimation_errors <- function(y_true, y_pred, title){
+  min_value <- min(y_true, y_pred) - min(y_true, y_pred) * 0.1
+  max_value <- max(y_true, y_pred) + max(y_true, y_pred) * 0.1
+  
+  plot(x=y_true,y=y_pred,
+       ylab="Predicciones",xlab="Observados",
+       xlim=c(min_value, max_value),ylim=c(min_value, max_value),
+       las=1, cex=1, pch=16,
+       main=title)
+  abline(a=0,b=1,lwd=2,col="black", lty=2)
+  R_vl<-cor(y_pred, y_true)
+  R_vl<-format(R_vl, digits = 3, nsmall = 3)
+  rmse_vl<- rmse(actual = y_true, predicted = y_pred)
+  rmse_vl<-format(rmse_vl,digits = 3,nsmall = 2)
+  grid()
+  legend("topleft",legend=paste0(c("Correlación: ","RMSE: "),c(R_vl,rmse_vl)), bty="n")
+}
+```
+
+```{r}
+y_pred <- exp(predict(step.model.choque, df_choque_train))
+y_true <- exp(df_choque_train$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal choque ~ Entrenamiento"
+  )
+```
+
+De primera instancia, se observa un muy buen ajuste de los datos de entrenamiento respecto al modelo de regresión lineal, sin embargo, para evaluar su capacidad de generalizar es necesario evaluarlo en el conjunto de validación.  
+
+```{r}
+y_pred <- exp(predict(step.model.choque, df_choque_test))
+y_true <- exp(df_choque_test$numero_accidentes)
+
+test_rmse <- rmse(y_true, y_pred)
+
+test_train_ratio <- round(((test_rmse / train_rmse) - 1)*100, 3)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo mensual semanal ~ Validación"
+  )
+```
+
+```{r}
+plot_errors_density <- function(model, train, y_train, test, y_test, title){
+  # data extraction
+  y_pred <- exp(predict(model, train))
+  y_true <- exp(y_train)
+  train_error <- y_true - y_pred
+  y_pred <- exp(predict(model, test))
+  y_true <- exp(y_test)
+  test_error <- y_true - y_pred
+  #errors dataframe
+  errors_df <- data.frame(
+    errors = c(train_error, test_error),
+    error_type = c(
+      rep("train", length(train_error)),
+      rep("test", length(test_error))
+    )
+  )
+  # plotting
+  ggplot(errors_df, aes(x=errors, color=error_type)) +
+    geom_density() + 
+    theme_classic() + 
+    ggtitle(title) + 
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+plot_errors_density(
+  model = step.model.choque, 
+  train = df_choque_train, 
+  y_train = df_choque_train$numero_accidentes,
+  test = df_choque_test, 
+  y_test = df_choque_test$numero_accidentes,
+  title="Errores de entrenamiento y validación clase choque"
+  )
+
+```
+
+Del análisis de errores, es claro que el modelo tiene problemas de subestimación, ya que las estimaciones no superan los valores de aproximadamente 120 choques por día. Sin embargo, viendo justamente los datos, es una proporción pequeña respecto a todo el conjunto de datos, por lo que podrían denotarse como observaciones más atípicas.  
+
+### Clase atropello
+#### Regresión lineal
+
+```{r}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "atropello")
+df_atropello_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_atropello_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.atropello.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_atropello_train)
+model.atropello.steps <- model.atropello.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.atropello.prepared <- prep(model.atropello.steps, training = df_atropello_train)
+df_atropello_train <- bake(model.atropello.prepared, df_atropello_train)
+df_atropello_test <- bake(model.atropello.prepared, df_atropello_test)
+```  
+
+```{r}
+modelo.atropello <- lm(numero_accidentes ~ ., data=df_atropello_train)
+step.model.atropello <- stepAIC(modelo.atropello, direction = "both", trace = F, steps = 2000)
+
+model.atropello.summary <- summary(step.model.atropello)
+model.atropello.summary
+```
+
+```{r}
+y_pred <- exp(predict(step.model.atropello, df_atropello_train))
+y_true <- exp(df_atropello_train$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal atropello ~ Entrenamiento"
+  )
+```
+
+
+```{r}
+y_pred <- exp(predict(step.model.atropello, df_atropello_test))
+y_true <- exp(df_atropello_test$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal atropello ~ Validación"
+  )
+```
+
+
+```{r}
+plot_errors_density(
+  model = step.model.atropello, 
+  train = df_atropello_train, 
+  y_train = df_atropello_train$numero_accidentes,
+  test = df_atropello_test, 
+  y_test = df_atropello_test$numero_accidentes,
+  title="Errores de entrenamiento y validación clase atropello"
+  )
+
+```
+
+El modelo de regresión lineal claramente no se ajusta correctamente a los datos, una de las soluciones puede ser incorporar nuevas variables que logren explicar mejor la variabilidad del fenomeno a estudiar o intentar con modelos diferentes que logren generalizar mejor la variable respuesta.  
+
+### Clase caida ocupante
+#### Regresión lineal  
+
+```{r}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "caida ocupante")
+df_caida_ocupante_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_caida_ocupante_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.caida_ocupante.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_caida_ocupante_train)
+model.caida_ocupante.steps <- model.caida_ocupante.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.caida_ocupante.prepared <- prep(model.caida_ocupante.steps, training = df_caida_ocupante_train)
+df_caida_ocupante_train <- bake(model.caida_ocupante.prepared, df_caida_ocupante_train)
+df_caida_ocupante_test <- bake(model.caida_ocupante.prepared, df_caida_ocupante_test)
+```  
+
+```{r}
+modelo.caida_ocupante <- lm(numero_accidentes ~ ., data=df_caida_ocupante_train)
+step.model.caida_ocupante <- stepAIC(modelo.caida_ocupante, direction = "both", trace = F, steps = 2000)
+
+model.caida_ocupante.summary <- summary(step.model.caida_ocupante)
+model.caida_ocupante.summary
+```
+
+```{r}
+y_pred <- exp(predict(step.model.caida_ocupante, df_caida_ocupante_train))
+y_true <- exp(df_caida_ocupante_train$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal caida_ocupante ~ Entrenamiento"
+  )
+```
+
+
+```{r}
+y_pred <- exp(predict(step.model.caida_ocupante, df_caida_ocupante_test))
+y_true <- exp(df_caida_ocupante_test$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal caida_ocupante ~ Validación"
+  )
+```
+
+
+```{r}
+plot_errors_density(
+  model = step.model.caida_ocupante, 
+  train = df_caida_ocupante_train, 
+  y_train = df_caida_ocupante_train$numero_accidentes,
+  test = df_caida_ocupante_test, 
+  y_test = df_caida_ocupante_test$numero_accidentes,
+  title="Errores de entrenamiento y validación clase caida_ocupante"
+  )
+
+```
+
+Nuevamente, observamos una baja calidad de modelos. Vale la pena explorar nuevas variables para capturar la variabilidad de la variable respuesta.  
+### Clase volcamiento
+#### Regresión lineal  
+
+```{r}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "volcamiento")
+df_volcamiento_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_volcamiento_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.volcamiento.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_volcamiento_train)
+model.volcamiento.steps <- model.volcamiento.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.volcamiento.prepared <- prep(model.volcamiento.steps, training = df_volcamiento_train)
+df_volcamiento_train <- bake(model.volcamiento.prepared, df_volcamiento_train)
+df_volcamiento_test <- bake(model.volcamiento.prepared, df_volcamiento_test)
+```  
+
+```{r}
+modelo.volcamiento <- lm(numero_accidentes ~ ., data=df_volcamiento_train)
+step.model.volcamiento <- stepAIC(modelo.volcamiento, direction = "both", trace = F, steps = 2000)
+
+model.volcamiento.summary <- summary(step.model.volcamiento)
+model.volcamiento.summary
+```
+
+```{r}
+y_pred <- exp(predict(step.model.volcamiento, df_volcamiento_train))
+y_true <- exp(df_volcamiento_train$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal volcamiento ~ Entrenamiento"
+  )
+```
+
+
+```{r}
+y_pred <- exp(predict(step.model.volcamiento, df_volcamiento_test))
+y_true <- exp(df_volcamiento_test$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal volcamiento ~ Validación"
+  )
+```
+
+
+```{r}
+plot_errors_density(
+  model = step.model.volcamiento, 
+  train = df_volcamiento_train, 
+  y_train = df_volcamiento_train$numero_accidentes,
+  test = df_volcamiento_test, 
+  y_test = df_volcamiento_test$numero_accidentes,
+  title="Errores de entrenamiento y validación clase volcamiento"
+  )
+
+```
+
+### Clase otros accidentes
+#### Regresión lineal  
+
+```{r}
+df_preprocessed <- armado_dataset_diario(df=df, objective_var = "otro")
+df_otro_train <- df_preprocessed %>% filter(PERIODO!=2018) %>% dplyr::select(-c(PERIODO, DIA))
+df_otro_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c(PERIODO, DIA))
+
+model.otro.recipe <- recipe(numero_accidentes ~ ., 
+                              data = df_otro_train)
+model.otro.steps <- model.otro.recipe %>% 
+  step_log(all_outcomes()) %>%
+  step_center(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL) %>% 
+  step_scale(all_predictors(), -MES, -DIA_SEMANA, -DIA_FESTIVO, -FECHA_ESPECIAL, -FESTIVO_FECHA_ESPECIAL)
+
+model.otro.prepared <- prep(model.otro.steps, training = df_otro_train)
+df_otro_train <- bake(model.otro.prepared, df_otro_train)
+df_otro_test <- bake(model.otro.prepared, df_otro_test)
+```  
+
+```{r}
+modelo.otro <- lm(numero_accidentes ~ ., data=df_otro_train)
+step.model.otro <- stepAIC(modelo.otro, direction = "both", trace = F, steps = 2000)
+
+model.otro.summary <- summary(step.model.otro)
+model.otro.summary
+```
+
+```{r}
+y_pred <- exp(predict(step.model.otro, df_otro_train))
+y_true <- exp(df_otro_train$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal otro ~ Entrenamiento"
+  )
+```
+
+
+```{r}
+y_pred <- exp(predict(step.model.otro, df_otro_test))
+y_true <- exp(df_otro_test$numero_accidentes)
+
+train_rmse <- rmse(y_true, y_pred)
+
+plot_estimation_errors(
+  y_true = y_true, 
+  y_pred = y_pred, 
+  title="Rendimiento de modelo semanal otro ~ Validación"
+  )
+```
+
+
+```{r}
+plot_errors_density(
+  model = step.model.otro, 
+  train = df_otro_train, 
+  y_train = df_otro_train$numero_accidentes,
+  test = df_otro_test, 
+  y_test = df_otro_test$numero_accidentes,
+  title="Errores de entrenamiento y validación clase otro"
+  )
+
+```

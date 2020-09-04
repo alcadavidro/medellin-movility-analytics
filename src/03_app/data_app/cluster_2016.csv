@@ -1,0 +1,311 @@
+"BARRIO","promedio_accidente_mes","cluster"
+"aures no.2",1,2
+"b. cerro el volador",1,2
+"el corazon el morro ",1,2
+"la oculta",1,2
+"la verde ",1,2
+"manrique central no.2",1,2
+"moscu no.2",1,2
+"piedras blancas represa",1,2
+"san jose la cima no.2",1,2
+"santa rosa de lima",1,2
+"suburbano el llano",1,2
+"suburbano el tesoro",1,2
+"versalles no.1",1,2
+"versalles no.2",1,2
+"villa lilliam",1,2
+"yolombo",1,2
+"eduardo santos",1.125,2
+"auc1",1.14285714285714,2
+"la loma de los bernal",1.14285714285714,2
+"versalles no. 2",1.14285714285714,2
+"la sierra",1.2,2
+"san antonio",1.2,2
+"suburbano mirador del poblado",1.2,2
+"suburbano pedregal alto",1.22222222222222,2
+"area de expansion belen rincon",1.25,2
+"el triunfo",1.28571428571429,2
+"juan pablo ii",1.28571428571429,2
+"el picacho",1.33333333333333,2
+"la loma oriental",1.33333333333333,2
+"mirador del doce",1.33333333333333,2
+"san jose la cima no. 1",1.33333333333333,2
+"suburbano palmitas",1.33333333333333,2
+"metropolitano",1.375,2
+"maria cano carambolas",1.45454545454545,2
+"area de expansion san antonio de prado",1.5,2
+"batallon girardot",1.5,2
+"buga patio bonito",1.5,2
+"trece de noviembre",1.55555555555556,2
+"villa turbay",1.57142857142857,2
+"manrique central no.1",1.6,2
+"media luna",1.6,2
+"piedras blancas",1.6,2
+"picachito",1.625,2
+"las independencias",1.66666666666667,2
+"pablo vi",1.66666666666667,2
+"suburbano altavista",1.66666666666667,2
+"campo valdes no.2",1.7,2
+"llanaditas",1.71428571428571,2
+"el socorro",1.77777777777778,2
+"area de expansion altos de calasanz",1.8,2
+"la ladera",1.8,2
+"ocho de marzo",1.8,2
+"aldea pablo vi",1.81818181818182,2
+"villa liliam",1.83333333333333,2
+"el compromiso",1.9,2
+"oriente",1.90909090909091,2
+"pajarito",1.90909090909091,2
+"la esperanza no. 2",1.91666666666667,2
+"la cruz",2,2
+"monteclaro",2,2
+"pedregal alto",2,2
+"suburbano palma patio",2,2
+"u.p.b.",2,2
+"el corazon",2.1,2
+"suburbano travesias",2.1,2
+"juan xxiii la quiebra",2.18181818181818,2
+"nuevos conquistadores",2.18181818181818,2
+"pedregal bajo",2.18181818181818,2
+"villa niza",2.18181818181818,2
+"blanquizal",2.2,2
+"aguas frias",2.22222222222222,2
+"bombona no.1",2.25,2
+"el progreso no.2",2.27272727272727,2
+"area de expansion altavista",2.4,2
+"carpinelo",2.4,2
+"san lucas",2.41666666666667,2
+"betania",2.45454545454545,2
+"belencito",2.5,2
+"la avanzada",2.5,2
+"asomadera no. 3",2.58333333333333,2
+"el rodeo",2.6,2
+"santa margarita",2.63636363636364,2
+"lalinde",2.66666666666667,2
+"olaya herrera",2.7,2
+"altavista sector central",2.72727272727273,2
+"suburbano el plan",2.75,1
+"miravalle",2.77777777777778,2
+"la hondonada",2.81818181818182,2
+"hospital san vicente de paul",2.90909090909091,2
+"plaza de ferias",3,2
+"b. cerro  el volador",3.09090909090909,2
+"nueva villa de aburra",3.2,2
+"fuente clara",3.25,2
+"barrio cristobal",3.3,2
+"el salado",3.33333333333333,2
+"santo domingo savio no. 2",3.41666666666667,2
+"la isla",3.58333333333333,2
+"santa lucia",3.58333333333333,2
+"jardin botanico",3.6,2
+"inst",3.66666666666667,2
+"la frontera",3.81818181818182,2
+"la francia",3.83333333333333,2
+"el pesebre",3.91666666666667,2
+"cementerio universal",4.09090909090909,2
+"la rosa",4.09090909090909,2
+"suburbano chacaltaya",4.125,2
+"bello horizonte",4.16666666666667,2
+"oleoducto",4.18181818181818,2
+"los cerros el vergel",4.25,2
+"barrio de jesus",4.41666666666667,2
+"facultad veterinaria y zootecnia u.de.a.",4.41666666666667,2
+"playon de los comuneros",4.5,2
+"santa cruz",4.5,2
+"suburbano la loma",4.5,2
+"antonio narino",4.54545454545455,2
+"las estancias",4.58333333333333,2
+"las lomas no.2",4.58333333333333,2
+"santa teresita",4.66666666666667,2
+"andalucia",4.72727272727273,2
+"asomadera no. 1",4.72727272727273,2
+"bermejal-los alamos",4.75,2
+"cataluna",4.75,2
+"ferrini",4.75,2
+"moscu no. 2",4.75,2
+"el pomar",4.83333333333333,2
+"astorga",4.91666666666667,2
+"la libertad",5,2
+"villa guadalupe",5,2
+"centro administrativo",5.16666666666667,2
+"florencia",5.25,2
+"la mansion",5.33333333333333,2
+"palermo",5.41666666666667,2
+"la pinuela",5.5,2
+"el diamante no. 2",5.63636363636364,2
+"el castillo",5.91666666666667,2
+"u.d. atanasio girardot",5.91666666666667,2
+"granizal",6,2
+"veinte de julio",6,2
+"aranjuez",6.08333333333333,2
+"la pilarica",6.08333333333333,2
+"los naranjos",6.08333333333333,2
+"bombona no. 2",6.25,2
+"moscu no. 1",6.25,2
+"san javier no.2",6.25,2
+"diego echavarria",6.33333333333333,2
+"san pablo",6.33333333333333,2
+"altos del poblado",6.66666666666667,2
+"bosques de san pablo",6.66666666666667,2
+"las violetas",6.66666666666667,1
+"altavista",6.83333333333333,2
+"brasilia",6.83333333333333,1
+"cordoba",6.83333333333333,1
+"el danubio",7.16666666666667,1
+"las mercedes",7.16666666666667,2
+"el nogal-los almendros",7.25,2
+"nueva villa de la iguana",7.25,2
+"popular",7.33333333333333,2
+"asomadera no. 2",7.41666666666667,2
+"aures no.1",7.41666666666667,1
+"la mota",7.41666666666667,1
+"los alcazares",7.41666666666667,2
+"palenque",7.41666666666667,2
+"simon bolivar",7.41666666666667,2
+"las esmeraldas",7.58333333333333,1
+"loma de los bernal",8,1
+"los balsos no.1",8,2
+"la pradera",8.08333333333333,1
+"las lomas no.1",8.25,2
+"los alpes",8.25,1
+"santa monica",8.25,2
+"parque norte",8.41666666666667,2
+"villa del socorro",8.41666666666667,1
+"los mangos",8.5,1
+"versalles no. 1",8.5,2
+"granada",8.58333333333333,2
+"villatina",8.58333333333333,1
+"doce de octubre no.1",8.66666666666667,1
+"el pinal",8.66666666666667,1
+"la milagrosa",8.66666666666667,1
+"alejandria",8.75,2
+"calasanz parte alta",8.83333333333333,2
+"gerona",8.83333333333333,1
+"campo alegre",8.91666666666667,1
+"el raizal",8.91666666666667,1
+"villa hermosa",9,1
+"santa ines",9.08333333333333,1
+"santo domingo savio no. 1",9.16666666666667,1
+"santander",9.33333333333333,1
+"san martin de porres",9.58333333333333,1
+"belalcazar",9.75,1
+"boyaca",9.91666666666667,1
+"la colina",9.91666666666667,1
+"las palmas",9.91666666666667,1
+"aures no. 2",10,1
+"doce de octubre no.2",10.0833333333333,1
+"francisco antonio zea",10.25,1
+"la salle",10.25,1
+"manrique central no. 2",10.4166666666667,1
+"cerro nutibara",10.5833333333333,1
+"san german",10.5833333333333,1
+"la alpujarra",10.75,1
+"la castellana",10.8333333333333,1
+"el salvador",11.0833333333333,1
+"enciso",11.0833333333333,1
+"las playas",11.0833333333333,1
+"toscana",11.0833333333333,1
+"cabecera urbana san cristobal",11.1666666666667,1
+"altamira",11.4166666666667,1
+"el velodromo",11.5,1
+"el tesoro",11.75,1
+"loreto",11.75,1
+"universidad de antioquia",11.8333333333333,1
+"area de expansion pajarito",12.1666666666667,4
+"miraflores",12.25,1
+"sucre",12.25,1
+"los balsos no.2",12.5,1
+"san javier no.1",12.5833333333333,1
+"san miguel",12.5833333333333,1
+"la esperanza",12.75,1
+"la palma",12.75,1
+"villa flora",12.75,1
+"berlin",12.8333333333333,1
+"la floresta",13.0833333333333,1
+"la florida",13.25,1
+"manrique oriental",13.3333333333333,1
+"san joaquin",13.4166666666667,1
+"calasanz",13.5833333333333,1
+"parque juan pablo ii",13.75,1
+"picacho",14,1
+"pedregal",14.25,1
+"patio bonito",14.3333333333333,1
+"hector abad gomez",14.5,1
+"kennedy",14.5,1
+"tejelo",14.5,1
+"campo valdes no. 2",14.5833333333333,1
+"bolivariana",14.75,1
+"florida nueva",14.75,1
+"el rincon",14.8333333333333,1
+"castropol",15.3333333333333,1
+"santa maria de los angeles",15.4166666666667,1
+"alejandro echavarria",15.5833333333333,1
+"barrio caicedo",15.8333333333333,1
+"lopez de mesa",15.8333333333333,1
+"tricentenario",15.8333333333333,1
+"buenos aires",16.25,1
+"cucaracho",16.3333333333333,1
+"lorena",16.4166666666667,4
+"el diamante",16.8333333333333,1
+"san pedro",17.1666666666667,4
+"robledo",17.4166666666667,1
+"miranda",17.5,1
+"la america",17.6666666666667,1
+"las brisas",17.9166666666667,1
+"cabecera san antonio de prado",18.3333333333333,1
+"la gloria",18.5833333333333,1
+"girardot",18.9166666666667,1
+"fatima",19,1
+"san isidro",19.0833333333333,4
+"estacion villa",19.25,1
+"trinidad",19.5,1
+"sevilla",19.5833333333333,4
+"los pinos",19.75,1
+"facultad de minas u. nacional",19.8333333333333,4
+"san bernardo",19.9166666666667,1
+"el poblado",20,1
+"tenche",20.0833333333333,1
+"cuarta brigada",20.4166666666667,1
+"barrio colombia",20.75,1
+"los angeles",20.75,1
+"campo valdes no. 1",20.9166666666667,1
+"bombona no. 1",21,4
+"manrique central no. 1",21.3333333333333,4
+"las granjas",21.5,1
+"moravia",23,4
+"alfonso lopez",24.0833333333333,4
+"suramericana",25.0833333333333,4
+"el estadio",26,4
+"rosales",27.5,4
+"calle nueva",27.5833333333333,4
+"las acacias",28,4
+"laureles",28.0833333333333,4
+"el progreso",28.75,4
+"manila",30.3333333333333,4
+"los colores",30.5,4
+"jesus nazareno",32.1666666666667,3
+"prado",33.5,4
+"universidad nacional",34.5,4
+"el chagualo",34.6666666666667,3
+"la aguacatala",34.9166666666667,4
+"cristo rey",37.6666666666667,4
+"villa carlota",39.5833333333333,4
+"naranjal",42.5,3
+"guayabal",44,4
+"boston",44.4166666666667,3
+"terminal de transporte",45.1666666666667,3
+"corazon de jesus",45.3333333333333,3
+"belen",46,3
+"villa nueva",46,3
+"san diego",49.8333333333333,3
+"castilla",50.0833333333333,3
+"carlos e. restrepo",51.5833333333333,3
+"santa fe",58,3
+"barrio colon",58.5833333333333,3
+"san benito",60.8333333333333,3
+"guayaquil",63.75,3
+"los conquistadores",68.25,3
+"campo amor",70.4166666666667,3
+"caribe",71.75,3
+"perpetuo socorro",72.9166666666667,3
+"la candelaria",79,3

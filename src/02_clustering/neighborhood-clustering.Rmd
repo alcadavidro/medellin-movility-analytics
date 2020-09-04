@@ -458,7 +458,7 @@ Lo primero que se observa, es la permanencia de la candelaria y caribe en el top
 df %>%
   filter(PERIODO==2014, DISENO=="") %>%
   mutate(lng=LONGITUD, lat=LATITUD) %>% 
-  select(lng, lat) %>% 
+  dplyr::select(lng, lat) %>% 
   leaflet() %>%
   addTiles() %>%
   addMarkers(
@@ -578,18 +578,18 @@ Antes de realizar cualquier técnica de clustering, procederemos a realizar un i
 ```{r}  
 cluster_df_2014 <- cluster_df %>% 
   filter(PERIODO==2014) %>% 
-  select(-c(PERIODO)) %>% 
+  dplyr::select(-c(PERIODO)) %>% 
   arrange(promedio_accidente_mes) %>% 
   mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
 
 
-cluster_df_2014 %>% select(-c(BARRIO)) %>%   mutate_all(funs(is.na(.))) %>% colSums()
+cluster_df_2014 %>% dplyr::select(-c(BARRIO)) %>%   mutate_all(funs(is.na(.))) %>% colSums()
 ```  
 Comprobamos que ninguna variable tiene valores faltantes, por lo que procedemos a realizar una estandarización de los datos para que la escala de algunas de las variables no afecte el algoritmo que busca minimizar las distancias, adicional por tener un importante número de variables, cualquier las escalas en un espacio de 30 dimensiones tiene un impacto significativamente en las métricas de distancias.  
 
 ```{r}  
 cluster_df_2014_sc <- cluster_df_2014 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   scale() %>% 
   data.frame(.)
 
@@ -607,7 +607,7 @@ cluster_df_2014$cluster <- as.integer(kmeans.2014$cluster)
 Veamos algunas estadísticas de los clusters
 ```{r}
 cluster_df_2014 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   group_by(cluster) %>% 
   summarise_all(funs(mean(.))) %>% 
   merge(cluster_df_2014 %>% 
@@ -616,6 +616,14 @@ cluster_df_2014 %>%
   kable() %>% 
   kable_styling(bootstrap_options = c("striped"), position = "left") %>%
   scroll_box(height = "300px")
+
+save_cluster_data <- function(df, periodo){
+  tmp <- df %>% dplyr::select(BARRIO, promedio_accidente_mes, cluster)
+  write.csv(tmp, file = paste("../03_app/data_app/cluster_", periodo, ".csv", sep=""), row.names = F)
+}
+
+save_cluster_data(cluster_df_2014, periodo = "2014")
+
 ```  
 
 A nivel general de todas las estadísticas, se observa que los clusters formados son a nivel general una descripción de barrios con diferentes niveles de accidentalidad, indiscriminadamente de la gravedad, clase o zona donde se produjo el accidente.  Es importante recalcar, que las zonas de mayor accidentalidad se concentran en unos cuantos barrios, específicamente, 11 barrios. Estos barrios están teniendo aproximadamente 2 accidentes por día, seguido del siguiente grupo de barrios que pueden tener hasta casi 1 accidente diario. Los otros dos clusters son de una accidentalidad relativamente baja en comparación a los primeros dos grupos y contienen el 76% de los barrios de Medellín.  
@@ -653,12 +661,12 @@ La primera carácteristica que se puede evidenciar de los clusters de los barrio
 ```{r}  
 cluster_df_2015 <- cluster_df %>% 
   filter(PERIODO==2015) %>% 
-  select(-c(PERIODO)) %>% 
+  dplyr::select(-c(PERIODO)) %>% 
   arrange(promedio_accidente_mes) %>% 
   mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
 
 cluster_df_2015_sc <- cluster_df_2015 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   scale() %>% 
   data.frame(.)
 
@@ -676,7 +684,7 @@ cluster_df_2015$cluster <- as.integer(kmeans.2015$cluster)
 Veamos algunas estadísticas de los clusters
 ```{r}
 cluster_df_2015 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   group_by(cluster) %>% 
   summarise_all(funs(mean(.))) %>% 
   merge(cluster_df_2015 %>% 
@@ -685,6 +693,8 @@ cluster_df_2015 %>%
   kable() %>% 
   kable_styling(bootstrap_options = c("striped"), position = "left") %>%
   scroll_box(height = "300px")
+
+save_cluster_data(cluster_df_2015, periodo = "2015")
 ```  
 
 Para el año 2015, vemos que se conserva una estructura muy similar a la clusterización de los barrios por los diferentes niveles de accidentes, se puede dividir entre niveles de **muy alta**, **alta**, **moderada** y **baja** accidentalidad.  
@@ -718,12 +728,12 @@ leaflet(cluster_2015_map) %>% addTiles() %>%
 ```{r}  
 cluster_df_2016 <- cluster_df %>% 
   filter(PERIODO==2016) %>% 
-  select(-c(PERIODO)) %>% 
+  dplyr::select(-c(PERIODO)) %>% 
   arrange(promedio_accidente_mes) %>% 
   mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
 
 cluster_df_2016_sc <- cluster_df_2016 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   scale() %>% 
   data.frame(.)
 
@@ -738,7 +748,7 @@ kmeans.2016 <- kmeans(x = cluster_df_2016_sc, centers = 4, iter.max = 200)
 cluster_df_2016$cluster <- as.integer(kmeans.2016$cluster)
 
 cluster_df_2016 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   group_by(cluster) %>% 
   summarise_all(funs(mean(.))) %>% 
   merge(cluster_df_2016 %>% 
@@ -747,6 +757,8 @@ cluster_df_2016 %>%
   kable() %>% 
   kable_styling(bootstrap_options = c("striped"), position = "left") %>%
   scroll_box(height = "300px")
+
+save_cluster_data(cluster_df_2016, periodo = "2016")
 ```  
 
 Entre los clusters del 2014, 2015 y 2016 se ve un ligero cambio en el número de barrios por cluster, en espacial para los clusters de más alta accidentalidad, lo cual refleja las matrices de transición denotadas en la parte superior del análisis.  
@@ -781,12 +793,12 @@ leaflet(cluster_2016_map) %>% addTiles() %>%
 ```{r}  
 cluster_df_2017 <- cluster_df %>% 
   filter(PERIODO==2017) %>% 
-  select(-c(PERIODO)) %>% 
+  dplyr::select(-c(PERIODO)) %>% 
   arrange(promedio_accidente_mes) %>% 
   mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
 
 cluster_df_2017_sc <- cluster_df_2017 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   scale() %>% 
   data.frame(.)
 
@@ -801,7 +813,7 @@ kmeans.2017 <- kmeans(x = cluster_df_2017_sc, centers = 3, iter.max = 200)
 cluster_df_2017$cluster <- as.integer(kmeans.2017$cluster)
 
 cluster_df_2017 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   group_by(cluster) %>% 
   summarise_all(funs(mean(.))) %>% 
   merge(cluster_df_2017 %>% 
@@ -810,6 +822,8 @@ cluster_df_2017 %>%
   kable() %>% 
   kable_styling(bootstrap_options = c("striped"), position = "left") %>%
   scroll_box(height = "300px")
+
+save_cluster_data(cluster_df_2017, periodo = "2017")
 ```  
 
 Para el año 2017 se intentó realizar la clusterización con `k = 4`, sin embargo, agrupo no más de 5 barrios para la accidentalidad más baja y la diferencia en las estadísticas eran mínimas, por lo que hizó más sentido hacer el agrupamiento para un parámetro de `k = 3`.  
@@ -847,12 +861,12 @@ leaflet(cluster_2017_map) %>% addTiles() %>%
 ```{r}  
 cluster_df_2018 <- cluster_df %>% 
   filter(PERIODO==2018) %>% 
-  select(-c(PERIODO)) %>% 
+  dplyr::select(-c(PERIODO)) %>% 
   arrange(promedio_accidente_mes) %>% 
   mutate_at(.vars = vars(-BARRIO), .funs = funs(na.constant(.x=., .na = 0)))
 
 cluster_df_2018_sc <- cluster_df_2018 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   scale() %>% 
   data.frame(.)
 
@@ -867,7 +881,7 @@ kmeans.2018 <- kmeans(x = cluster_df_2018_sc, centers = 4, iter.max = 200)
 cluster_df_2018$cluster <- as.integer(kmeans.2018$cluster)
 
 cluster_df_2018 %>% 
-  select(-c(BARRIO)) %>% 
+  dplyr::select(-c(BARRIO)) %>% 
   group_by(cluster) %>% 
   summarise_all(funs(mean(.))) %>% 
   merge(cluster_df_2018 %>% 
@@ -876,6 +890,8 @@ cluster_df_2018 %>%
   kable() %>% 
   kable_styling(bootstrap_options = c("striped"), position = "left") %>%
   scroll_box(height = "300px")
+
+save_cluster_data(cluster_df_2018, periodo = "2018")
 ```  
 
 Para el año 2018, se mantuvo la estructura de 4 clusters con diferencias importantes entre las estadísticas de accidentes.    

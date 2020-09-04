@@ -152,9 +152,9 @@ armado_dataset_mensual <- function(df, objective_var){
     merge(accidentes_por_gravedad, by.x = c("PERIODO", "MES"), by.y = c("PERIODO_LEAD", "MES_LEAD"), all.x = T) %>%
     merge(rezagos_accidentes, by = c("PERIODO", "MES"), all.x = T) %>%
     merge(domingos, by.x = c("PERIODO", "MES"), by.y = c("PERIODO_LEAD", "MES_LEAD"), all.x = T) %>% 
-    filter(!is.na(t_minus_2)) %>% 
     merge(fechas_meses, by = c("PERIODO", "MES")) %>% 
-    arrange(PERIODO, MES, .by_group = T)
+    arrange(PERIODO, MES, .by_group = T) %>% 
+    filter(!is.na(t_minus_2))
   
   return(df_processed)
 }
@@ -168,13 +168,13 @@ df_choque_test <- df_preprocessed %>% filter(PERIODO==2018) %>% dplyr::select(-c
 Para el modelado de cada clase en el modelo mensual se intentarán sólo modelos lineales, ya que se cuentan con menos de 50 datos por clase de accidente, por lo que un modelo no-lineal como arboles de decisión o modelos más avanzados tenderían a sobreajustarse fácilmente. Primero, se procede a escalar los datos números a escala logarítmica para aproximarlos lo más posible a una normal.  
 
 ```{r}
-df_choque_train <- df_choque_train %>% 
-  mutate(
-    incendio=incendio+1,
-    dias_festivos=dias_festivos+1,
-    dias_especiales=dias_especiales+1,
-    dias_festivos_especiales=dias_festivos_especiales+1
-    )
+# df_choque_train <- df_choque_train %>% 
+#   mutate(
+#     incendio=incendio+1,
+#     dias_festivos=dias_festivos+1,
+#     dias_especiales=dias_especiales+1,
+#     dias_festivos_especiales=dias_festivos_especiales+1
+#     )
 
 model.choque.recipe <- recipe(numero_accidentes ~ ., 
                               data = df_choque_train)
@@ -306,6 +306,31 @@ test_train_ratio <- round((test_rmse / train_rmse -1 )*100, 3)
 
 Como se puede observar, con la regularización lasso, el modelo de choque mensual tiene unas predicciones más restrictivas ya que está penalizando fuertemente los regresores con altos coeficientes, sin embargo, la variación del error está alrededor del `r test_train_ratio`% lo cual es más aceptable dado que la anterior, estaba alrededor del 30%. Por ende, concluímos que el modelo usando penalización lasso es más apropiado al de la regresión lineal con selección stepwise.  
 
+
+#### Almacenado de modelo y datos para generar predicciones 
+```{r}
+predicciones <- df_preprocessed %>% 
+  dplyr::select(PERIODO, MES)
+
+choque.data.prediction <- df_preprocessed %>%
+  dplyr::select(-c(PERIODO)) %>%
+  bake(model.choque.prepared, .) %>%
+  model.matrix(numero_accidentes ~., data=.)
+
+choque.predicciones <- choque.data.prediction[,-1] %>% predict(lasso.model.choque, .)
+predicciones[,c("accidentes_choque")] <- df_preprocessed$numero_accidentes
+predicciones[,c("estimaciones_choque")] <- choque.predicciones[,c(1)]
+
+predicciones <- predicciones %>%
+  mutate(
+    FECHA=as_date(paste(PERIODO, formatC(MES, width = 2, flag = 0), "01",sep='-')),
+    estimaciones_choque=round(exp(estimaciones_choque))
+    ) %>% 
+  dplyr::select(FECHA, accidentes_choque, estimaciones_choque)
+
+```
+
+
 ## Atropello  
 
 ```{r}
@@ -435,6 +460,23 @@ test_train_ratio <- round((lasso.atropello.results$validation$rmse / lasso.atrop
 
 Para el modelo de atropellos, se maneja una variación del RMSE de `r test_train_ratio`%, Pero viendo las gráficas de predicción, puede haber un signo de subajuste de los modelos.  
 
+
+```{r}
+atropello.predicciones <- predict(
+  lasso.atropello.results$model, 
+  rbind(lasso.atropello.results$training$data, lasso.atropello.results$validation$data)
+)
+
+predicciones$accidentes_atropello <- exp(
+  c(
+    lasso.atropello.results$training$response,
+    lasso.atropello.results$validation$response)
+  )
+predicciones$estimaciones_atropello <- round(exp(atropello.predicciones[,c(1)]))
+
+```
+
+
 ## Caida ocupante
 
 ```{r}
@@ -464,6 +506,22 @@ test_train_ratio <- round((lasso.caida.results$validation$rmse / lasso.caida.res
 ```
 Para el modelo de caida de ocpante, se maneja una variación del RMSE de `r test_train_ratio`%.  
 
+```{r}
+caida_ocupante.predicciones <- predict(
+  lasso.caida.results$model, 
+  rbind(lasso.caida.results$training$data, lasso.caida.results$validation$data)
+)
+
+predicciones$accidentes_caida_ocupante <- exp(
+  c(
+    lasso.caida.results$training$response,
+    lasso.caida.results$validation$response)
+  )
+predicciones$estimaciones_caida_ocupante <- round(exp(caida_ocupante.predicciones[,c(1)]))
+
+```
+
+
 ## Volcamiento
 
 ```{r}
@@ -491,6 +549,21 @@ test_train_ratio <- round((lasso.volcamiento.results$validation$rmse / lasso.vol
 ```
 
 Claramente para el modelo mensual de volcamiento, no se tiene una buena estimación del modelo, ya que aunque se tenga una variación del `r test_train_ratio`%, los errores del modelo con la data de entrenamiento claramente muestran una subestimación del modelo.  
+
+```{r}
+volcamiento.predicciones <- predict(
+  lasso.volcamiento.results$model, 
+  rbind(lasso.volcamiento.results$training$data, lasso.volcamiento.results$validation$data)
+)
+
+predicciones$accidentes_volcamiento <- exp(
+  c(
+    lasso.volcamiento.results$training$response,
+    lasso.volcamiento.results$validation$response)
+  )
+predicciones$estimaciones_volcamiento <- round(exp(volcamiento.predicciones[,c(1)]))
+
+```
 
 ## Otros e incendios  
 
@@ -522,6 +595,23 @@ test_train_ratio <- round((lasso.otros.results$validation$rmse / lasso.otros.res
 
 
 Se puede evidenciar que el modelo para otro tipo de accidentes tiene una sobreestimación sustancial cuando se le compara contra los valores reales, tal que el RMSE aumenta a casi el doble y no muestra alta correlación entre las observaciones y las predicciones.  
+
+```{r}
+otros.predicciones <- predict(
+  lasso.otros.results$model, 
+  rbind(lasso.otros.results$training$data, lasso.otros.results$validation$data)
+)
+
+predicciones$accidentes_otros <- exp(
+  c(
+    lasso.otros.results$training$response,
+    lasso.otros.results$validation$response)
+  )
+predicciones$estimaciones_otros <- round(exp(otros.predicciones[,c(1)]))
+
+write.csv(predicciones, file = "../03_app/data_app/predicciones_mensuales.csv", row.names = F)
+
+```
 
 ## Conclusiones  
 
